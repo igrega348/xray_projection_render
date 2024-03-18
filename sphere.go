@@ -9,19 +9,28 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/go-gl/mathgl/mgl64"
 )
 
 const res = 512
+const f = 2.0
 
 func density(x, y, z float64) float64 {
 	x0, y0, z0 := 0.0, 0.0, 3.0
 	x = x - x0
 	y = y - y0
 	z = z - z0
-	r := math.Sqrt((x * x) + (y * y) + (z * z))
-	if r < 0.25 {
-		return 0.0
-	} else if r < 0.75 {
+	// r := math.Sqrt((x * x) + (y * y) + (z * z))
+	// if r < 0.25 {
+	// 	return 0.0
+	// } else if r < 0.75 {
+	// 	return 0.01
+	// } else {
+	// 	return 0
+	// }
+	// cube
+	if x < 0.5 && x > -0.5 && y < 0.5 && y > -0.5 && z < 0.5 && z > -0.5 {
 		return 0.01
 	} else {
 		return 0
@@ -60,12 +69,20 @@ func timer() func() {
 func main() {
 	defer timer()()
 	var img [res][res]float64
+
+	projection := mgl64.Perspective(mgl64.DegToRad(45.0), 1, 0.1, 10)
+	camera := mgl64.LookAt(3, 3, 3, 0, 0, 0, 0, 1, 0)
+	fmt.Println(projection)
+	fmt.Println(camera)
+
 	// concurrent version:
 	var wg sync.WaitGroup
 	for i := 0; i < res; i++ {
 		for j := 0; j < res; j++ {
 			wg.Add(1)
-			go computePixel(&img, i, j, float64(i)/(res/2)-1, float64(j)/(res/2)-1, 2.0, 0.001, 2, 5, &wg)
+			vx := mgl64.Vec3{float64(i)/(res/2) - 1, float64(j)/(res/2) - 1, f}
+			vx = mgl64.TransformCoordinate(vx, projection.Mul4(camera))
+			go computePixel(&img, i, j, vx.X(), vx.Y(), vx.Z(), 0.001, 2, 5, &wg)
 		}
 	}
 	wg.Wait()
@@ -89,6 +106,7 @@ func main() {
 		for j := 0; j < res; j++ {
 			val := (img[i][j] - _min) / (_max - _min)
 			var c color.RGBA64
+			// c = color.RGBA64{uint16(val * 0xffff), uint16(val * 0xffff), uint16(val * 0xffff), 0xffff}
 			if val == 1 {
 				c = color.RGBA64{0, 0, 0, 0x0000}
 			} else {
