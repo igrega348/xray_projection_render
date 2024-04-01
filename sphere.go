@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
@@ -15,8 +16,8 @@ import (
 )
 
 const res = 512
-const fov = 1.0
-const R = 100.0
+const fov = 25.0
+const R = 6.0
 const num_images = 91
 
 func density(x, y, z float64) float64 {
@@ -48,6 +49,15 @@ func density(x, y, z float64) float64 {
 		return 1.0
 	}
 	return 0
+	// sphere with a cubic hole
+	// r := math.Sqrt((x*x + y*y + z*z))
+	// if math.Abs(x) < 0.25 && math.Abs(y) < 0.25 && math.Abs(z) < 0.25 {
+	// 	return 0.0
+	// } else if r < 0.5 {
+	// 	return 1.0
+	// } else {
+	// 	return 0.0
+	// }
 }
 
 func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) float64 {
@@ -76,13 +86,27 @@ func timer() func() {
 	}
 }
 
+type OneParam struct {
+	FilePath        string      `json:"file_path"`
+	TransformMatrix [][]float64 `json:"transform_matrix"`
+}
+type TransformParams struct {
+	CameraAngle float64    `json:"camera_angle_x"`
+	Frames      []OneParam `json:"frames"`
+}
+
 func main() {
 	defer timer()()
 	var img [res][res]float64
 
+	transform_params := TransformParams{
+		CameraAngle: fov * math.Pi / 180.0,
+		Frames:      []OneParam{},
+	}
+	// create a progress bar
 	bar := progressbar.Default(int64(num_images))
 	for i_img := 0; i_img < num_images; i_img++ {
-		dth := 180.0 / (num_images - 1)
+		dth := 360.0 / (num_images - 1)
 		th := float64(i_img) * dth
 		bar.Add(1)
 		// zero out img
@@ -92,12 +116,23 @@ func main() {
 			}
 		}
 
-		origin := mgl64.Vec3{R * math.Cos(mgl64.DegToRad(float64(th))), R * math.Sin(mgl64.DegToRad(float64(th))), 0}
+		// random angle from horizontal
+		phi := 90.0 * math.Pi / 180.0
+
+		origin := mgl64.Vec3{R * math.Cos(mgl64.DegToRad(float64(th))) * math.Sin(phi), R * math.Sin(mgl64.DegToRad(float64(th))) * math.Sin(phi), math.Cos(phi) * R}
 		center := mgl64.Vec3{0, 0, 0}
 		up := mgl64.Vec3{0, 0, 1}
 		camera := mgl64.LookAtV(origin, center, up)
 		// try to use the matrix to transform coordinates from camera space to world space
 		camera = camera.Inv()
+
+		rows := make([][]float64, 4)
+		for i := 0; i < 4; i++ {
+			rows[i] = make([]float64, 4)
+			for j := 0; j < 4; j++ {
+				rows[i][j] = camera.At(i, j)
+			}
+		}
 
 		var wg sync.WaitGroup
 		f := 1 / math.Tan(mgl64.DegToRad(fov/2))
@@ -131,22 +166,36 @@ func main() {
 			for j := 0; j < res; j++ {
 				val := img[i][j]
 				// val := (img[i][j] - _min) / (_max - _min)
-				c := color.RGBA64{uint16(val * 0xffff), uint16(val * 0xffff), uint16(val * 0xffff), 0xffff}
-				// var c color.RGBA64
-				// if val == 1 {
-				// 	c = color.RGBA64{0, 0, 0, 0x0000}
-				// } else {
-				// 	c = color.RGBA64{uint16(val * 0xffff), uint16(val * 0xffff), uint16(val * 0xffff), 0xffff}
-				// }
+				// c := color.RGBA64{uint16(val * 0xffff), uint16(val * 0xffff), uint16(val * 0xffff), 0xffff}
+				var c color.RGBA64
+				if val == 1 {
+					c = color.RGBA64{0, 0, 0, 0x0000}
+				} else {
+					c = color.RGBA64{uint16(val * 0xffff), uint16(val * 0xffff), uint16(val * 0xffff), 0xffff}
+				}
 				myImage.SetRGBA64(i, j, c)
 			}
 		}
 		// Save to out.png
-		out, err := os.Create(fmt.Sprintf("pics/out%.1f.png", th))
+		filename := fmt.Sprintf("pics/out%.1f.png", th)
+		out, err := os.Create(filename)
 		if err != nil {
 			panic(err)
 		}
 		png.Encode(out, myImage)
 		out.Close()
+
+		transform_params.Frames = append(transform_params.Frames, OneParam{FilePath: filename, TransformMatrix: rows})
 	}
+
+	// Optionally, write JSON data to a file
+	file, err := os.Create("transforms.json")
+	if err != nil {
+		fmt.Println("Error creating file:", err)
+		return
+	}
+	defer file.Close()
+
+	jsonData, err := json.MarshalIndent(transform_params, "", "  ")
+	_, err = file.Write(jsonData)
 }
