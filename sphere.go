@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"image/png"
 	"math"
+	"math/rand"
 	"os"
 	"sync"
 	"time"
@@ -17,10 +18,10 @@ import (
 )
 
 const res = 512
-const fov = 10.0
-const R = 10.0
-const num_images = 2
-const flat_field = 0.1
+const fov = 45.0
+const R = 6.0
+const num_images = 15
+const flat_field = 0.0
 
 func density(x, y, z float64) float64 {
 	x0, y0, z0 := 0.0, 0.0, 0.0
@@ -151,6 +152,12 @@ type OneParam struct {
 }
 type TransformParams struct {
 	CameraAngle float64    `json:"camera_angle_x"`
+	FL_X        float64    `json:"fl_x"`
+	FL_Y        float64    `json:"fl_y"`
+	W           float64    `json:"w"`
+	H           float64    `json:"h"`
+	CX          float64    `json:"cx"`
+	CY          float64    `json:"cy"`
 	Frames      []OneParam `json:"frames"`
 }
 
@@ -160,6 +167,10 @@ func main() {
 
 	transform_params := TransformParams{
 		CameraAngle: fov * math.Pi / 180.0,
+		W:           res,
+		H:           res,
+		CX:          res / 2.0,
+		CY:          res / 2.0,
 		Frames:      []OneParam{},
 	}
 	// create a progress bar
@@ -177,6 +188,7 @@ func main() {
 
 		// random angle from horizontal
 		phi := 90.0 * math.Pi / 180.0
+		phi = rand.Float64() * math.Pi / 2.0
 
 		origin := mgl64.Vec3{R * math.Cos(mgl64.DegToRad(float64(th))) * math.Sin(phi), R * math.Sin(mgl64.DegToRad(float64(th))) * math.Sin(phi), math.Cos(phi) * R}
 		center := mgl64.Vec3{0, 0, 0}
@@ -195,6 +207,8 @@ func main() {
 
 		var wg sync.WaitGroup
 		f := 1 / math.Tan(mgl64.DegToRad(fov/2))
+		transform_params.FL_X = f * res / 2.0
+		transform_params.FL_Y = f * res / 2.0
 		for i := 0; i < res; i++ {
 			for j := 0; j < res; j++ {
 				wg.Add(1)
