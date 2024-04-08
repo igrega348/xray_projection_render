@@ -13,49 +13,64 @@ import (
 
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/schollz/progressbar/v3"
-	"gonum.org/v1/gonum/integrate/quad"
-
-	"github.com/igrega348/sphere_render/lattices"
 )
 
 const res = 512
 const fov = 45.0
 const R = 3.0
-const r = 0.1
-const num_images = 4
+const rad = 0.1
+const num_images = 5
 const flat_field = 0.0
 
-var struts = []lattices.Strut{
-	lattices.Strut{P0: mgl64.Vec3{-0.5, -0.5, -0.5}, P1: mgl64.Vec3{-0.5, -0.5, 0.5}, R: 0.1},
-	lattices.Strut{P0: mgl64.Vec3{0.5, -0.5, -0.5}, P1: mgl64.Vec3{0.5, -0.5, 0.5}, R: 0.1},
-	lattices.Strut{P0: mgl64.Vec3{0.5, 0.5, -0.5}, P1: mgl64.Vec3{0.5, 0.5, 0.5}, R: 0.1},
-	lattices.Strut{P0: mgl64.Vec3{-0.5, 0.5, -0.5}, P1: mgl64.Vec3{-0.5, 0.5, 0.5}, R: 0.1}}
-var lat = lattices.Lattice{Struts: struts}
-
 func density(x, y, z float64) float64 {
-
-	// struts := make([]lattices.Strut, 4)
-	// struts[0] = lattices.Strut{P0: mgl64.Vec3{-0.5, -0.5, -0.5}, P1: mgl64.Vec3{-0.5, -0.5, 0.5}, R: 0.1}
-	// struts[1] = lattices.Strut{P0: mgl64.Vec3{0.5, -0.5, -0.5}, P1: mgl64.Vec3{0.5, -0.5, 0.5}, R: 0.1}
-	// struts[2] = lattices.Strut{P0: mgl64.Vec3{0.5, 0.5, -0.5}, P1: mgl64.Vec3{0.5, 0.5, 0.5}, R: 0.1}
-	// struts[3] = lattices.Strut{P0: mgl64.Vec3{-0.5, 0.5, -0.5}, P1: mgl64.Vec3{-0.5, 0.5, 0.5}, R: 0.1}
-	// lat := lattices.Lattice{Struts: struts}
-	return lat.Density(x, y, z)
-	// points := make([]mgl64.Vec2, 4)
-	// points[0] = mgl64.Vec2{-0.5, -0.5}
-	// points[1] = mgl64.Vec2{0.5, -0.5}
-	// points[2] = mgl64.Vec2{0.5, 0.5}
-	// points[3] = mgl64.Vec2{-0.5, 0.5}
-	// if z < -0.5 || z > 0.5 {
-	// 	return 0.0
-	// }
-	// for i := 0; i < 4; i++ {
-	// 	r := mgl64.Vec2{x - points[i][0], y - points[i][1]}
-	// 	if r.Len() < 0.1 {
-	// 		return 1.0
-	// 	}
-	// }
-	// return 0.0
+	points := make([]mgl64.Vec3, 8)
+	points[0] = mgl64.Vec3{0.5, 0.5, 0.5}
+	points[1] = mgl64.Vec3{0.5, 0.5, -0.5}
+	points[2] = mgl64.Vec3{0.5, -0.5, 0.5}
+	points[3] = mgl64.Vec3{0.5, -0.5, -0.5}
+	points[4] = mgl64.Vec3{-0.5, 0.5, 0.5}
+	points[5] = mgl64.Vec3{-0.5, 0.5, -0.5}
+	points[6] = mgl64.Vec3{-0.5, -0.5, 0.5}
+	points[7] = mgl64.Vec3{-0.5, -0.5, -0.5}
+	lines := [][]int{
+		{0, 1},
+		{0, 2},
+		{0, 4},
+		{1, 3},
+		{1, 5},
+		{2, 3},
+		{2, 6},
+		{3, 7},
+		{4, 5},
+		{4, 6},
+		{5, 7},
+		{6, 7},
+	}
+	// u := mgl64.Vec3{x, y, z}
+	u := []float64{x, y, z}
+	rad_2 := rad * rad
+	for _, p := range lines {
+		p0 := points[p[0]]
+		p1 := points[p[1]]
+		// get the vector from the point to the line
+		// v := p1.Sub(p0)
+		// w := u.Sub(p0)
+		v := []float64{p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]}
+		w := []float64{u[0] - p0[0], u[1] - p0[1], u[2] - p0[2]}
+		// get the projection of w onto v
+		// c := w.Dot(v) / v.Dot(v)
+		c := (w[0]*v[0] + w[1]*v[1] + w[2]*v[2]) / (v[0]*v[0] + v[1]*v[1] + v[2]*v[2])
+		if c < 0.0 || c > 1.0 { // point is definitely not on the line
+			continue
+		}
+		// get the distance from the point to the line
+		// d := w.Sub(v.Mul(c)).Len()
+		d := c * ((w[0]-v[0])*(w[0]-v[0]) + (w[1]-v[1])*(w[1]-v[1]) + (w[2]-v[2])*(w[2]-v[2]))
+		if d < rad_2 {
+			return 1.0
+		}
+	}
+	return 0.0
 }
 
 // func density(x, y, z float64) float64 {
@@ -72,30 +87,6 @@ func density(x, y, z float64) float64 {
 // 	} else {
 // 		return 0
 // 	}
-// 	// cube
-// 	// if x < 0.5 && x > -0.5 && y < 0.5 && y > -0.5 && z < 0.5 && z > -0.5 {
-// 	// 	return 0.01
-// 	// } else {
-// 	// 	return 0
-// 	// }
-// 	// cube with a spherical hole
-// 	// r := math.Sqrt((x*x + y*y + z*z))
-// 	// if r < 0.25 {
-// 	// 	return 0.0
-// 	// }
-// 	// if x < 0.5 && x > -0.5 && y < 0.5 && y > -0.5 && z < 0.5 && z > -0.5 {
-// 	// 	return 1.0
-// 	// }
-// 	// return 0
-// 	// sphere with a cubic hole
-// 	// r := math.Sqrt((x*x + y*y + z*z))
-// 	// if math.Abs(x) < 0.25 && math.Abs(y) < 0.25 && math.Abs(z) < 0.25 {
-// 	// 	return 0.0
-// 	// } else if r < 0.5 {
-// 	// 	return 1.0
-// 	// } else {
-// 	// 	return 0.0
-// 	// }
 // }
 
 func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) float64 {
@@ -107,65 +98,9 @@ func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) f
 		x := origin[0] + direction[0]*s
 		y := origin[1] + direction[1]*s
 		z := origin[2] + direction[2]*s
-		// T += lat.Density(x, y, z) * ds
 		T += density(x, y, z) * ds
 	}
 	return math.Exp(-T)
-}
-
-func integrate_hierarchical(origin, direction mgl64.Vec3, ds, smin, smax float64) float64 {
-	// normalize components of the ray
-	direction = direction.Normalize()
-	// integrate
-	T := 0.0
-	for s := smin; s <= smax; s += 9 * ds {
-		x := origin[0] + direction[0]*s
-		y := origin[1] + direction[1]*s
-		z := origin[2] + direction[2]*s
-		rho := density(x, y, z)
-		if rho > 0 {
-			for _s := s - 4*ds; _s <= s+4*ds; _s += ds {
-				x := origin[0] + direction[0]*_s
-				y := origin[1] + direction[1]*_s
-				z := origin[2] + direction[2]*_s
-				T += density(x, y, z) * ds
-			}
-		}
-	}
-	return math.Exp(-T)
-}
-
-func integrate_adaptive(origin, direction mgl64.Vec3, smin, smax float64) float64 {
-	// normalize components of the ray
-	direction = direction.Normalize()
-	f := func(s float64) float64 {
-		x := origin[0] + direction[0]*s
-		y := origin[1] + direction[1]*s
-		z := origin[2] + direction[2]*s
-		return density(x, y, z)
-	}
-	return math.Exp(-adaptive_quad(f, smin, smax, 100))
-}
-
-func adaptive_quad(f func(float64) float64, xmin, xmax float64, n int) float64 {
-	// integrate f from xmin to xmax
-	// split into 2 intervals and evaluate the integral of each interval
-	xmid := (xmin + xmax) / 2
-	// n2 := int(math.Ceil(float64(n) / 2))
-	n2 := (n + 1) / 2 // should be the same as above
-	int1 := quad.Fixed(f, xmin, xmid, n2, nil, 0)
-	int2 := quad.Fixed(f, xmid, xmax, n2, nil, 0)
-	// new resolution
-	_int1 := quad.Fixed(f, xmin, xmid, n, nil, 0)
-	_int2 := quad.Fixed(f, xmid, xmax, n, nil, 0)
-	thresh := 1e-5
-	if math.Abs(_int1-int1) > thresh {
-		_int1 = adaptive_quad(f, xmin, xmid, n)
-	}
-	if math.Abs(_int2-int2) > thresh {
-		_int2 = adaptive_quad(f, xmid, xmax, n)
-	}
-	return _int1 + _int2
 }
 
 func computePixel(img *[res][res]float64, i, j int, origin, direction mgl64.Vec3, ds, smin, smax float64, wg *sync.WaitGroup) {
