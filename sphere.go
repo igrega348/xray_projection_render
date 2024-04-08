@@ -15,98 +15,15 @@ import (
 	"github.com/schollz/progressbar/v3"
 )
 
-const res = 1024
+const res = 512
 const fov = 45.0
 const R = 3.0
 const rad = 0.1
 const rad_2 = rad * rad
-const num_images = 5
+const num_images = 4
 const flat_field = 0.0
 
-// func density(x, y, z float64) float64 {
-// 	points := [][]float64{
-// 		{0.5, 0.5, 0.5},
-// 		{0.5, 0.5, -0.5},
-// 		{0.5, -0.5, 0.5},
-// 		{0.5, -0.5, -0.5},
-// 		{-0.5, 0.5, 0.5},
-// 		{-0.5, 0.5, -0.5},
-// 		{-0.5, -0.5, 0.5},
-// 		{-0.5, -0.5, -0.5},
-// 	}
-// 	lines := [][]int{
-// 		{0, 1},
-// 		{0, 2},
-// 		{0, 4},
-// 		{1, 3},
-// 		{1, 5},
-// 		{2, 3},
-// 		{2, 6},
-// 		{3, 7},
-// 		{4, 5},
-// 		{4, 6},
-// 		{5, 7},
-// 		{6, 7},
-// 	}
-// 	u := []float64{x, y, z}
-// 	rad_2 := rad * rad
-// 	for _, p := range lines {
-// 		p0 := points[p[0]]
-// 		p1 := points[p[1]]
-// 		// get the vector from the point to the line
-// 		v := []float64{p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]}
-// 		w := []float64{u[0] - p0[0], u[1] - p0[1], u[2] - p0[2]}
-// 		// get the projection of w onto v
-// 		// c := w.Dot(v) / v.Dot(v)
-// 		c := (w[0]*v[0] + w[1]*v[1] + w[2]*v[2]) / (v[0]*v[0] + v[1]*v[1] + v[2]*v[2])
-// 		if c < 0.0 || c > 1.0 { // point is definitely not on the line
-// 			continue
-// 		}
-// 		// get the distance from the point to the line
-// 		// d := w.Sub(v.Mul(c)).Len()
-// 		d := c * ((w[0]-v[0])*(w[0]-v[0]) + (w[1]-v[1])*(w[1]-v[1]) + (w[2]-v[2])*(w[2]-v[2]))
-// 		if d < rad_2 {
-// 			return 1.0
-// 		}
-// 	}
-// 	return 0.0
-// }
-
 func density(x, y, z float64) float64 {
-	x0, y0, z0 := 0.0, 0.0, 0.0
-	x = x - x0
-	y = y - y0
-	z = z - z0
-	// sphere
-	r := math.Sqrt((x * x) + (y * y) + (z * z))
-	if r < 0.25 {
-		return 0.0
-	} else if r < 0.75 {
-		return 1.0
-	} else {
-		return 0
-	}
-}
-
-func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) float64 {
-	// normalize components of the ray
-	direction = direction.Normalize()
-	// integrate
-	T := flat_field
-	for s := smin; s < smax; s += ds {
-		x := origin[0] + direction[0]*s
-		y := origin[1] + direction[1]*s
-		z := origin[2] + direction[2]*s
-		T += density(x, y, z) * ds
-	}
-	return math.Exp(-T)
-}
-
-func computePixel(img *[res][res]float64, i, j int, origin, direction mgl64.Vec3, ds, smin, smax float64, wg *sync.WaitGroup) {
-	defer wg.Done()
-	// img[i][j] = integrate_adaptive(origin, direction, smin, smax)
-	// img[i][j] = integrate_hierarchical(origin, direction, ds, smin, smax)
-	// img[i][j] = integrate_along_ray(origin, direction, ds, smin, smax)
 	points := [][]float64{
 		{0.5, 0.5, 0.5},
 		{0.5, 0.5, -0.5},
@@ -131,55 +48,137 @@ func computePixel(img *[res][res]float64, i, j int, origin, direction mgl64.Vec3
 		{5, 7},
 		{6, 7},
 	}
-	intersection_length := 0.0
-	// for now ignore the issue of intersecting cylinders
-	// intersection_enter := make([]float64, len(points))
-	// intersection_exit := make([]float64, len(points))
+	u := []float64{x, y, z}
 	for _, p := range lines {
 		p0 := points[p[0]]
 		p1 := points[p[1]]
-		v := mgl64.Vec3{p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]}
-		w := mgl64.Vec3{p0[0] - origin[0], p0[1] - origin[1], p0[2] - origin[2]}
-		n := direction.Cross(v)
-		// var min_s, max_s float64
-		if n.Len() < 0.0001 {
-			// if lines are parallel
-			// starting at p0, go to p1
-			// min_s = w.Dot(direction)
-			// max_s = w.Add(v).Dot(direction)
-			intersection_length += v.Len()
-		} else {
-			n_unit := n.Normalize()
-			// get the projection of w onto n
-			c := w.Dot(n_unit)
-			c_2 := c * c
-			if c > rad_2 {
-				// not intersecting the line
-				// min_s = math.Inf(-1)
-				// max_s = math.Inf(-1)
-				continue
-			} else {
-				// need to check if the ray intersects the cylinder within the line segment
-				ni := direction.Cross(n_unit)
-				eta_j := -w.Dot(ni) / v.Dot(ni)
-				if eta_j < 0 || eta_j > 1 {
-					continue
-				}
-				// what are the two values of s where the ray intersects the cylinder?
-				// s = (c +/- sqrt(rad^2 - c^2)) / direction
-				s := math.Sqrt(rad_2 - c_2)
-				intersection_length += 2 * s
-				// min_s = direction.Dot(w) - s
-				// max_s = direction.Dot(w) + s
-			}
+		// get the vector from the point to the line
+		v := []float64{p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]}
+		w := []float64{u[0] - p0[0], u[1] - p0[1], u[2] - p0[2]}
+		// get the projection of w onto v
+		// c := w.Dot(v) / v.Dot(v)
+		c := (w[0]*v[0] + w[1]*v[1] + w[2]*v[2]) / (v[0]*v[0] + v[1]*v[1] + v[2]*v[2])
+		if c < 0.0 || c > 1.0 { // point is definitely not on the line
+			continue
 		}
-		// if min_s > max_s {
-		// 	min_s, max_s = max_s, min_s
-		// }
-		// intersection_enter[i] = min_s
-		// intersection_exit[i] = max_s
+		// get the distance from the point to the line
+		// d := w.Sub(v.Mul(c)).Len()
+		d := c * ((w[0]-v[0])*(w[0]-v[0]) + (w[1]-v[1])*(w[1]-v[1]) + (w[2]-v[2])*(w[2]-v[2]))
+		if d < rad_2 {
+			return 1.0
+		}
 	}
-	img[i][j] = math.Exp(-2 * intersection_length)
+	return 0.0
+}
+
+// func density(x, y, z float64) float64 {
+// 	x0, y0, z0 := 0.0, 0.0, 0.0
+// 	x = x - x0
+// 	y = y - y0
+// 	z = z - z0
+// 	// sphere
+// 	r := math.Sqrt((x * x) + (y * y) + (z * z))
+// 	if r < 0.25 {
+// 		return 0.0
+// 	} else if r < 0.75 {
+// 		return 1.0
+// 	} else {
+// 		return 0
+// 	}
+// }
+
+func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) float64 {
+	// normalize components of the ray
+	direction = direction.Normalize()
+	// integrate
+	T := flat_field
+	for s := smin; s < smax; s += ds {
+		x := origin[0] + direction[0]*s
+		y := origin[1] + direction[1]*s
+		z := origin[2] + direction[2]*s
+		T += density(x, y, z) * ds
+	}
+	return math.Exp(-T)
+}
+
+func computePixel(img *[res][res]float64, i, j int, origin, direction mgl64.Vec3, ds, smin, smax float64, wg *sync.WaitGroup) {
+	defer wg.Done()
+	// img[i][j] = integrate_adaptive(origin, direction, smin, smax)
+	// img[i][j] = integrate_hierarchical(origin, direction, ds, smin, smax)
+	img[i][j] = integrate_along_ray(origin, direction, ds, smin, smax)
+	// points := [][]float64{
+	// 	{0.5, 0.5, 0.5},
+	// 	{0.5, 0.5, -0.5},
+	// 	{0.5, -0.5, 0.5},
+	// 	{0.5, -0.5, -0.5},
+	// 	{-0.5, 0.5, 0.5},
+	// 	{-0.5, 0.5, -0.5},
+	// 	{-0.5, -0.5, 0.5},
+	// 	{-0.5, -0.5, -0.5},
+	// }
+	// lines := [][]int{
+	// 	{0, 1},
+	// 	{0, 2},
+	// 	{0, 4},
+	// 	{1, 3},
+	// 	{1, 5},
+	// 	{2, 3},
+	// 	{2, 6},
+	// 	{3, 7},
+	// 	{4, 5},
+	// 	{4, 6},
+	// 	{5, 7},
+	// 	{6, 7},
+	// }
+	// intersection_length := 0.0
+	// // for now ignore the issue of intersecting cylinders
+	// // intersection_enter := make([]float64, len(points))
+	// // intersection_exit := make([]float64, len(points))
+	// for _, p := range lines {
+	// 	p0 := points[p[0]]
+	// 	p1 := points[p[1]]
+	// 	v := mgl64.Vec3{p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]}
+	// 	w := mgl64.Vec3{p0[0] - origin[0], p0[1] - origin[1], p0[2] - origin[2]}
+	// 	n := direction.Cross(v)
+	// 	// var min_s, max_s float64
+	// 	if n.Len() < 0.0001 {
+	// 		// if lines are parallel
+	// 		// starting at p0, go to p1
+	// 		// min_s = w.Dot(direction)
+	// 		// max_s = w.Add(v).Dot(direction)
+	// 		intersection_length += v.Len()
+	// 	} else {
+	// 		n_unit := n.Normalize()
+	// 		// get the projection of w onto n
+	// 		c := w.Dot(n_unit)
+	// 		c_2 := c * c
+	// 		if c > rad_2 {
+	// 			// not intersecting the line
+	// 			// min_s = math.Inf(-1)
+	// 			// max_s = math.Inf(-1)
+	// 			continue
+	// 		} else {
+	// 			// need to check if the ray intersects the cylinder within the line segment
+	// 			ni := direction.Cross(n_unit)
+	// 			eta_j := -w.Dot(ni) / v.Dot(ni)
+	// 			if eta_j < 0 || eta_j > 1 {
+	// 				continue
+	// 			}
+	// 			// what are the two values of s where the ray intersects the cylinder?
+	// 			// s = (c +/- sqrt(rad^2 - c^2)) / direction
+	// 			s := math.Sqrt(rad_2 - c_2)
+	// 			intersection_length += 2 * s
+	// 			// min_s = direction.Dot(w) - s
+	// 			// max_s = direction.Dot(w) + s
+	// 		}
+	// 	}
+	// 	// if min_s > max_s {
+	// 	// 	min_s, max_s = max_s, min_s
+	// 	// }
+	// 	// intersection_enter[i] = min_s
+	// 	// intersection_exit[i] = max_s
+	// }
+	// img[i][j] = math.Exp(-2 * intersection_length)
 }
 
 func timer() func() {
