@@ -7,7 +7,6 @@ import (
 	"image/color"
 	"image/png"
 	"math"
-	"math/rand"
 	"os"
 	"sync"
 	"time"
@@ -19,49 +18,67 @@ import (
 
 const res = 512
 const fov = 45.0
-const R = 6.0
-const num_images = 15
+const R = 3.0
+const num_images = 4
 const flat_field = 0.0
 
 func density(x, y, z float64) float64 {
-	x0, y0, z0 := 0.0, 0.0, 0.0
-	x = x - x0
-	y = y - y0
-	z = z - z0
-	// sphere
-	// r := math.Sqrt((x * x) + (y * y) + (z * z))
-	// if r < 0.25 {
-	// 	return 0.0
-	// } else if r < 0.75 {
-	// 	return 1.0
-	// } else {
-	// 	return 0
-	// }
-	// cube
-	// if x < 0.5 && x > -0.5 && y < 0.5 && y > -0.5 && z < 0.5 && z > -0.5 {
-	// 	return 0.01
-	// } else {
-	// 	return 0
-	// }
-	// cube with a spherical hole
-	r := math.Sqrt((x*x + y*y + z*z))
-	if r < 0.25 {
+	points := make([]mgl64.Vec2, 4)
+	points[0] = mgl64.Vec2{-0.5, -0.5}
+	points[1] = mgl64.Vec2{0.5, -0.5}
+	points[2] = mgl64.Vec2{0.5, 0.5}
+	points[3] = mgl64.Vec2{-0.5, 0.5}
+	if z < -0.5 || z > 0.5 {
 		return 0.0
 	}
-	if x < 0.5 && x > -0.5 && y < 0.5 && y > -0.5 && z < 0.5 && z > -0.5 {
-		return 1.0
+	for i := 0; i < 4; i++ {
+		r := mgl64.Vec2{x - points[i][0], y - points[i][1]}
+		if r.Len() < 0.1 {
+			return 1.0
+		}
 	}
-	return 0
-	// sphere with a cubic hole
-	// r := math.Sqrt((x*x + y*y + z*z))
-	// if math.Abs(x) < 0.25 && math.Abs(y) < 0.25 && math.Abs(z) < 0.25 {
-	// 	return 0.0
-	// } else if r < 0.5 {
-	// 	return 1.0
-	// } else {
-	// 	return 0.0
-	// }
+	return 0.0
 }
+
+// func density(x, y, z float64) float64 {
+// 	x0, y0, z0 := 0.0, 0.0, 0.0
+// 	x = x - x0
+// 	y = y - y0
+// 	z = z - z0
+// 	// sphere
+// 	r := math.Sqrt((x * x) + (y * y) + (z * z))
+// 	if r < 0.25 {
+// 		return 0.0
+// 	} else if r < 0.75 {
+// 		return 1.0
+// 	} else {
+// 		return 0
+// 	}
+// 	// cube
+// 	// if x < 0.5 && x > -0.5 && y < 0.5 && y > -0.5 && z < 0.5 && z > -0.5 {
+// 	// 	return 0.01
+// 	// } else {
+// 	// 	return 0
+// 	// }
+// 	// cube with a spherical hole
+// 	// r := math.Sqrt((x*x + y*y + z*z))
+// 	// if r < 0.25 {
+// 	// 	return 0.0
+// 	// }
+// 	// if x < 0.5 && x > -0.5 && y < 0.5 && y > -0.5 && z < 0.5 && z > -0.5 {
+// 	// 	return 1.0
+// 	// }
+// 	// return 0
+// 	// sphere with a cubic hole
+// 	// r := math.Sqrt((x*x + y*y + z*z))
+// 	// if math.Abs(x) < 0.25 && math.Abs(y) < 0.25 && math.Abs(z) < 0.25 {
+// 	// 	return 0.0
+// 	// } else if r < 0.5 {
+// 	// 	return 1.0
+// 	// } else {
+// 	// 	return 0.0
+// 	// }
+// }
 
 func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) float64 {
 	// normalize components of the ray
@@ -176,8 +193,25 @@ func main() {
 	// create a progress bar
 	bar := progressbar.Default(int64(num_images))
 	for i_img := 0; i_img < num_images; i_img++ {
-		dth := 360.0 / (num_images - 1)
-		th := float64(i_img) * dth
+		dth := 360.0 / num_images
+		var th, phi float64
+		// if i_img < 4 {
+		// 	th = 90.0*float64(i_img%4) + 45.0
+		// 	phi = math.Pi / 2.0
+		// } else if i_img < 6 {
+		// 	th = 0
+		// 	if i_img == 4 {
+		// 		phi = 0.0001
+		// 	} else {
+		// 		phi = math.Pi
+		// 	}
+		// } else {
+		// 	th = rand.Float64() * 360.0
+		// 	phi = rand.Float64() * math.Pi
+		// }
+
+		th = float64(i_img) * dth
+		phi = math.Pi / 2.0
 		bar.Add(1)
 		// zero out img
 		for i := 0; i < res; i++ {
@@ -186,9 +220,13 @@ func main() {
 			}
 		}
 
-		// random angle from horizontal
-		phi := 90.0 * math.Pi / 180.0
-		phi = rand.Float64() * math.Pi / 2.0
+		// angle from vertical
+		// phi := 90.0 * math.Pi / 180.0
+		// z := rand.Float64()*2 - 1
+		// phi := math.Acos(z)
+		// spiral trajectory
+		// z := 0.99 - 1.98*float64(i_img)/float64(num_images-1)
+		// phi := math.Acos(z)
 
 		origin := mgl64.Vec3{R * math.Cos(mgl64.DegToRad(float64(th))) * math.Sin(phi), R * math.Sin(mgl64.DegToRad(float64(th))) * math.Sin(phi), math.Cos(phi) * R}
 		center := mgl64.Vec3{0, 0, 0}
@@ -219,38 +257,22 @@ func main() {
 		}
 		wg.Wait()
 
-		// if th == 0 {
-		// 	_max, _min := 0.0, 1.0
-		// 	for i := 0; i < res; i++ {
-		// 		for j := 0; j < res; j++ {
-		// 			if img[i][j] > _max {
-		// 				_max = img[i][j]
-		// 			}
-		// 			if img[i][j] < _min {
-		// 				_min = img[i][j]
-		// 			}
-		// 		}
-		// 	}
-		// 	fmt.Println(_max, _min)
-		// }
-
 		myImage := image.NewRGBA(image.Rect(0, 0, res, res))
 		for i := 0; i < res; i++ {
 			for j := 0; j < res; j++ {
 				val := img[i][j]
-				// val := (img[i][j] - _min) / (_max - _min)
-				// c := color.RGBA64{uint16(val * 0xffff), uint16(val * 0xffff), uint16(val * 0xffff), 0xffff}
-				var c color.RGBA64
-				if val == 1 {
-					c = color.RGBA64{0, 0, 0, 0x0000}
-				} else {
-					c = color.RGBA64{uint16(val * 0xffff), uint16(val * 0xffff), uint16(val * 0xffff), 0xffff}
-				}
+				c := color.RGBA64{uint16(val * 0xffff), uint16(val * 0xffff), uint16(val * 0xffff), 0xffff}
+				// var c color.RGBA64
+				// if val == 1 {
+				// 	c = color.RGBA64{0, 0, 0, 0x0000}
+				// } else {
+				// 	c = color.RGBA64{uint16(val * 0xffff), uint16(val * 0xffff), uint16(val * 0xffff), 0xffff}
+				// }
 				myImage.SetRGBA64(i, j, c)
 			}
 		}
 		// Save to out.png
-		filename := fmt.Sprintf("pics/out%.1f.png", th)
+		filename := fmt.Sprintf("pics/out%d.png", i_img)
 		out, err := os.Create(filename)
 		if err != nil {
 			panic(err)
