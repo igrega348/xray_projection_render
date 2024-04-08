@@ -13,7 +13,6 @@ import (
 
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/schollz/progressbar/v3"
-	"gonum.org/v1/gonum/integrate/quad"
 
 	"github.com/igrega348/sphere_render/lattices"
 )
@@ -22,7 +21,7 @@ const res = 512
 const fov = 45.0
 const R = 3.0
 const r = 0.1
-const num_images = 4
+const num_images = 5
 const flat_field = 0.0
 
 var struts = []lattices.Strut{
@@ -113,65 +112,8 @@ func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) f
 	return math.Exp(-T)
 }
 
-func integrate_hierarchical(origin, direction mgl64.Vec3, ds, smin, smax float64) float64 {
-	// normalize components of the ray
-	direction = direction.Normalize()
-	// integrate
-	T := 0.0
-	for s := smin; s <= smax; s += 9 * ds {
-		x := origin[0] + direction[0]*s
-		y := origin[1] + direction[1]*s
-		z := origin[2] + direction[2]*s
-		rho := density(x, y, z)
-		if rho > 0 {
-			for _s := s - 4*ds; _s <= s+4*ds; _s += ds {
-				x := origin[0] + direction[0]*_s
-				y := origin[1] + direction[1]*_s
-				z := origin[2] + direction[2]*_s
-				T += density(x, y, z) * ds
-			}
-		}
-	}
-	return math.Exp(-T)
-}
-
-func integrate_adaptive(origin, direction mgl64.Vec3, smin, smax float64) float64 {
-	// normalize components of the ray
-	direction = direction.Normalize()
-	f := func(s float64) float64 {
-		x := origin[0] + direction[0]*s
-		y := origin[1] + direction[1]*s
-		z := origin[2] + direction[2]*s
-		return density(x, y, z)
-	}
-	return math.Exp(-adaptive_quad(f, smin, smax, 100))
-}
-
-func adaptive_quad(f func(float64) float64, xmin, xmax float64, n int) float64 {
-	// integrate f from xmin to xmax
-	// split into 2 intervals and evaluate the integral of each interval
-	xmid := (xmin + xmax) / 2
-	// n2 := int(math.Ceil(float64(n) / 2))
-	n2 := (n + 1) / 2 // should be the same as above
-	int1 := quad.Fixed(f, xmin, xmid, n2, nil, 0)
-	int2 := quad.Fixed(f, xmid, xmax, n2, nil, 0)
-	// new resolution
-	_int1 := quad.Fixed(f, xmin, xmid, n, nil, 0)
-	_int2 := quad.Fixed(f, xmid, xmax, n, nil, 0)
-	thresh := 1e-5
-	if math.Abs(_int1-int1) > thresh {
-		_int1 = adaptive_quad(f, xmin, xmid, n)
-	}
-	if math.Abs(_int2-int2) > thresh {
-		_int2 = adaptive_quad(f, xmid, xmax, n)
-	}
-	return _int1 + _int2
-}
-
 func computePixel(img *[res][res]float64, i, j int, origin, direction mgl64.Vec3, ds, smin, smax float64, wg *sync.WaitGroup) {
 	defer wg.Done()
-	// img[i][j] = integrate_adaptive(origin, direction, smin, smax)
-	// img[i][j] = integrate_hierarchical(origin, direction, ds, smin, smax)
 	img[i][j] = integrate_along_ray(origin, direction, ds, smin, smax)
 }
 
