@@ -103,8 +103,6 @@ func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) f
 
 func computePixel(img *[res][res]float64, i, j int, origin, direction mgl64.Vec3, ds, smin, smax float64, wg *sync.WaitGroup) {
 	defer wg.Done()
-	// img[i][j] = integrate_adaptive(origin, direction, smin, smax)
-	// img[i][j] = integrate_hierarchical(origin, direction, ds, smin, smax)
 	img[i][j] = integrate_along_ray(origin, direction, ds, smin, smax)
 	// points := [][]float64{
 	// 	{0.5, 0.5, 0.5},
