@@ -14,30 +14,48 @@ import (
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/schollz/progressbar/v3"
 	"gonum.org/v1/gonum/integrate/quad"
+
+	"github.com/igrega348/sphere_render/lattices"
 )
 
 const res = 512
 const fov = 45.0
 const R = 3.0
+const r = 0.1
 const num_images = 4
 const flat_field = 0.0
 
+var struts = []lattices.Strut{
+	lattices.Strut{P0: mgl64.Vec3{-0.5, -0.5, -0.5}, P1: mgl64.Vec3{-0.5, -0.5, 0.5}, R: 0.1},
+	lattices.Strut{P0: mgl64.Vec3{0.5, -0.5, -0.5}, P1: mgl64.Vec3{0.5, -0.5, 0.5}, R: 0.1},
+	lattices.Strut{P0: mgl64.Vec3{0.5, 0.5, -0.5}, P1: mgl64.Vec3{0.5, 0.5, 0.5}, R: 0.1},
+	lattices.Strut{P0: mgl64.Vec3{-0.5, 0.5, -0.5}, P1: mgl64.Vec3{-0.5, 0.5, 0.5}, R: 0.1}}
+var lat = lattices.Lattice{Struts: struts}
+
 func density(x, y, z float64) float64 {
-	points := make([]mgl64.Vec2, 4)
-	points[0] = mgl64.Vec2{-0.5, -0.5}
-	points[1] = mgl64.Vec2{0.5, -0.5}
-	points[2] = mgl64.Vec2{0.5, 0.5}
-	points[3] = mgl64.Vec2{-0.5, 0.5}
-	if z < -0.5 || z > 0.5 {
-		return 0.0
-	}
-	for i := 0; i < 4; i++ {
-		r := mgl64.Vec2{x - points[i][0], y - points[i][1]}
-		if r.Len() < 0.1 {
-			return 1.0
-		}
-	}
-	return 0.0
+
+	// struts := make([]lattices.Strut, 4)
+	// struts[0] = lattices.Strut{P0: mgl64.Vec3{-0.5, -0.5, -0.5}, P1: mgl64.Vec3{-0.5, -0.5, 0.5}, R: 0.1}
+	// struts[1] = lattices.Strut{P0: mgl64.Vec3{0.5, -0.5, -0.5}, P1: mgl64.Vec3{0.5, -0.5, 0.5}, R: 0.1}
+	// struts[2] = lattices.Strut{P0: mgl64.Vec3{0.5, 0.5, -0.5}, P1: mgl64.Vec3{0.5, 0.5, 0.5}, R: 0.1}
+	// struts[3] = lattices.Strut{P0: mgl64.Vec3{-0.5, 0.5, -0.5}, P1: mgl64.Vec3{-0.5, 0.5, 0.5}, R: 0.1}
+	// lat := lattices.Lattice{Struts: struts}
+	return lat.Density(x, y, z)
+	// points := make([]mgl64.Vec2, 4)
+	// points[0] = mgl64.Vec2{-0.5, -0.5}
+	// points[1] = mgl64.Vec2{0.5, -0.5}
+	// points[2] = mgl64.Vec2{0.5, 0.5}
+	// points[3] = mgl64.Vec2{-0.5, 0.5}
+	// if z < -0.5 || z > 0.5 {
+	// 	return 0.0
+	// }
+	// for i := 0; i < 4; i++ {
+	// 	r := mgl64.Vec2{x - points[i][0], y - points[i][1]}
+	// 	if r.Len() < 0.1 {
+	// 		return 1.0
+	// 	}
+	// }
+	// return 0.0
 }
 
 // func density(x, y, z float64) float64 {
@@ -89,6 +107,7 @@ func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) f
 		x := origin[0] + direction[0]*s
 		y := origin[1] + direction[1]*s
 		z := origin[2] + direction[2]*s
+		// T += lat.Density(x, y, z) * ds
 		T += density(x, y, z) * ds
 	}
 	return math.Exp(-T)
