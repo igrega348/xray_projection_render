@@ -20,16 +20,49 @@ import (
 const res = 512
 const fov = 45.0
 const R = 3.0
-const r = 0.1
-const num_images = 5
+const num_images = 4
 const flat_field = 0.0
 
-var struts = []lattices.Strut{
-	lattices.Strut{P0: mgl64.Vec3{-0.5, -0.5, -0.5}, P1: mgl64.Vec3{-0.5, -0.5, 0.5}, R: 0.1},
-	lattices.Strut{P0: mgl64.Vec3{0.5, -0.5, -0.5}, P1: mgl64.Vec3{0.5, -0.5, 0.5}, R: 0.1},
-	lattices.Strut{P0: mgl64.Vec3{0.5, 0.5, -0.5}, P1: mgl64.Vec3{0.5, 0.5, 0.5}, R: 0.1},
-	lattices.Strut{P0: mgl64.Vec3{-0.5, 0.5, -0.5}, P1: mgl64.Vec3{-0.5, 0.5, 0.5}, R: 0.1}}
-var lat = lattices.Lattice{Struts: struts}
+func make_lattice() lattices.Lattice {
+	s2 := math.Sqrt(2)
+	var struts = []lattices.Strut{
+		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0.5, 0.5, -1 / s2}, R: 0.1},
+		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{1, 0, 0}, R: 0.1},
+		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0.5, -0.5, -1 / s2}, R: 0.1},
+		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0, 1, 0}, R: 0.1},
+		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{-0.5, 0.5, -1 / s2}, R: 0.1},
+		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0.5, 0.5, 1 / s2}, R: 0.1}}
+	nx := 4
+	ny := 4
+	nz := 4
+	scaler := 1.0 / float64(max(nx, ny, nz))
+	dx := mgl64.Vec3{1, 0, 0}
+	dy := mgl64.Vec3{0, 1, 0}
+	dz := mgl64.Vec3{0.5, 0.5, 1 / s2}
+	var tess = make([]lattices.Strut, nx*ny*nz*len(struts))
+	for i := 0; i < nx; i++ {
+		for j := 0; j < ny; j++ {
+			for k := 0; k < nz; k++ {
+				for i_s := 0; i_s < len(struts); i_s++ {
+					tess[(i*ny*nz+j*nz+k)*len(struts)+i_s] = lattices.Strut{
+						P0: struts[i_s].P0.Add(dx.Mul(float64(i)).Add(dy.Mul(float64(j)).Add(dz.Mul(float64(k))))).Mul(scaler).Sub(mgl64.Vec3{0.5, 0.5, -0.25}),
+						P1: struts[i_s].P1.Add(dx.Mul(float64(i)).Add(dy.Mul(float64(j)).Add(dz.Mul(float64(k))))).Mul(scaler).Sub(mgl64.Vec3{0.5, 0.5, -0.25}),
+						R:  struts[i_s].R * scaler}
+				}
+			}
+		}
+	}
+	return lattices.Lattice{Struts: tess}
+}
+
+//	var struts = []lattices.Strut{
+//		lattices.Strut{P0: mgl64.Vec3{-0.5, -0.5, -0.5}, P1: mgl64.Vec3{-0.5, -0.5, 0.5}, R: 0.1},
+//		lattices.Strut{P0: mgl64.Vec3{0.5, -0.5, -0.5}, P1: mgl64.Vec3{0.5, -0.5, 0.5}, R: 0.1},
+//		lattices.Strut{P0: mgl64.Vec3{0.5, 0.5, -0.5}, P1: mgl64.Vec3{0.5, 0.5, 0.5}, R: 0.1},
+//		lattices.Strut{P0: mgl64.Vec3{-0.5, 0.5, -0.5}, P1: mgl64.Vec3{-0.5, 0.5, 0.5}, R: 0.1}}
+//
+// var lat = lattices.Lattice{Struts: struts}
+var lat = make_lattice()
 
 func density(x, y, z float64) float64 {
 
