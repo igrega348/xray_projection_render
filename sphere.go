@@ -17,36 +17,31 @@ import (
 	"github.com/igrega348/sphere_render/lattices"
 )
 
-const res = 512
+const res = 128
 const fov = 45.0
 const R = 3.0
-const num_images = 4
+const rad = 0.1
+const num_images = 1
 const flat_field = 0.0
 
 func make_lattice() lattices.Lattice {
-	s2 := math.Sqrt(2)
-	var struts = []lattices.Strut{
-		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0.5, 0.5, -1 / s2}, R: 0.1},
-		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{1, 0, 0}, R: 0.1},
-		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0.5, -0.5, -1 / s2}, R: 0.1},
-		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0, 1, 0}, R: 0.1},
-		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{-0.5, 0.5, -1 / s2}, R: 0.1},
-		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0.5, 0.5, 1 / s2}, R: 0.1}}
+	var kelvin_uc = lattices.MakeKelvin(rad)
+	var struts = kelvin_uc.Struts
 	nx := 4
 	ny := 4
 	nz := 4
 	scaler := 1.0 / float64(max(nx, ny, nz))
 	dx := mgl64.Vec3{1, 0, 0}
 	dy := mgl64.Vec3{0, 1, 0}
-	dz := mgl64.Vec3{0.5, 0.5, 1 / s2}
+	dz := mgl64.Vec3{0, 0, 1}
 	var tess = make([]lattices.Strut, nx*ny*nz*len(struts))
 	for i := 0; i < nx; i++ {
 		for j := 0; j < ny; j++ {
 			for k := 0; k < nz; k++ {
 				for i_s := 0; i_s < len(struts); i_s++ {
 					tess[(i*ny*nz+j*nz+k)*len(struts)+i_s] = lattices.Strut{
-						P0: struts[i_s].P0.Add(dx.Mul(float64(i)).Add(dy.Mul(float64(j)).Add(dz.Mul(float64(k))))).Mul(scaler).Sub(mgl64.Vec3{0.5, 0.5, -0.25}),
-						P1: struts[i_s].P1.Add(dx.Mul(float64(i)).Add(dy.Mul(float64(j)).Add(dz.Mul(float64(k))))).Mul(scaler).Sub(mgl64.Vec3{0.5, 0.5, -0.25}),
+						P0: struts[i_s].P0.Add(dx.Mul(float64(i)).Add(dy.Mul(float64(j)).Add(dz.Mul(float64(k))))).Mul(scaler).Sub(mgl64.Vec3{0.5, 0.5, 0.5}),
+						P1: struts[i_s].P1.Add(dx.Mul(float64(i)).Add(dy.Mul(float64(j)).Add(dz.Mul(float64(k))))).Mul(scaler).Sub(mgl64.Vec3{0.5, 0.5, 0.5}),
 						R:  struts[i_s].R * scaler}
 				}
 			}
