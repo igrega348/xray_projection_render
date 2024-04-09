@@ -20,7 +20,7 @@ import (
 const res = 512
 const fov = 45.0
 const R = 3.0
-const num_images = 4
+const num_images = 100
 const flat_field = 0.0
 
 func make_lattice() lattices.Lattice {
@@ -32,9 +32,9 @@ func make_lattice() lattices.Lattice {
 		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0, 1, 0}, R: 0.1},
 		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{-0.5, 0.5, -1 / s2}, R: 0.1},
 		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0.5, 0.5, 1 / s2}, R: 0.1}}
-	nx := 4
-	ny := 4
-	nz := 4
+	nx := 8
+	ny := 8
+	nz := 8
 	scaler := 1.0 / float64(max(nx, ny, nz))
 	dx := mgl64.Vec3{1, 0, 0}
 	dy := mgl64.Vec3{0, 1, 0}
@@ -45,8 +45,8 @@ func make_lattice() lattices.Lattice {
 			for k := 0; k < nz; k++ {
 				for i_s := 0; i_s < len(struts); i_s++ {
 					tess[(i*ny*nz+j*nz+k)*len(struts)+i_s] = lattices.Strut{
-						P0: struts[i_s].P0.Add(dx.Mul(float64(i)).Add(dy.Mul(float64(j)).Add(dz.Mul(float64(k))))).Mul(scaler).Sub(mgl64.Vec3{0.5, 0.5, -0.25}),
-						P1: struts[i_s].P1.Add(dx.Mul(float64(i)).Add(dy.Mul(float64(j)).Add(dz.Mul(float64(k))))).Mul(scaler).Sub(mgl64.Vec3{0.5, 0.5, -0.25}),
+						P0: struts[i_s].P0.Add(dx.Mul(float64(i)).Add(dy.Mul(float64(j)).Add(dz.Mul(float64(k))))).Mul(scaler).Sub(mgl64.Vec3{0.6, 0.6, 0.25}),
+						P1: struts[i_s].P1.Add(dx.Mul(float64(i)).Add(dy.Mul(float64(j)).Add(dz.Mul(float64(k))))).Mul(scaler).Sub(mgl64.Vec3{0.6, 0.6, 0.25}),
 						R:  struts[i_s].R * scaler}
 				}
 			}
@@ -266,7 +266,7 @@ func main() {
 			}
 		}
 		// Save to out.png
-		filename := fmt.Sprintf("pics/out%d.png", i_img)
+		filename := fmt.Sprintf("pics2/out%d.png", i_img)
 		out, err := os.Create(filename)
 		if err != nil {
 			panic(err)
@@ -278,7 +278,7 @@ func main() {
 	}
 
 	// Optionally, write JSON data to a file
-	file, err := os.Create("transforms.json")
+	file, err := os.Create("transforms2.json")
 	if err != nil {
 		fmt.Println("Error creating file:", err)
 		return
