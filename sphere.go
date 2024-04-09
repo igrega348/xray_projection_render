@@ -50,80 +50,11 @@ func make_lattice() lattices.Lattice {
 	return lattices.Lattice{Struts: tess}
 }
 
-//	var struts = []lattices.Strut{
-//		lattices.Strut{P0: mgl64.Vec3{-0.5, -0.5, -0.5}, P1: mgl64.Vec3{-0.5, -0.5, 0.5}, R: 0.1},
-//		lattices.Strut{P0: mgl64.Vec3{0.5, -0.5, -0.5}, P1: mgl64.Vec3{0.5, -0.5, 0.5}, R: 0.1},
-//		lattices.Strut{P0: mgl64.Vec3{0.5, 0.5, -0.5}, P1: mgl64.Vec3{0.5, 0.5, 0.5}, R: 0.1},
-//		lattices.Strut{P0: mgl64.Vec3{-0.5, 0.5, -0.5}, P1: mgl64.Vec3{-0.5, 0.5, 0.5}, R: 0.1}}
-//
-// var lat = lattices.Lattice{Struts: struts}
 var lat = make_lattice()
 
 func density(x, y, z float64) float64 {
-
-	// struts := make([]lattices.Strut, 4)
-	// struts[0] = lattices.Strut{P0: mgl64.Vec3{-0.5, -0.5, -0.5}, P1: mgl64.Vec3{-0.5, -0.5, 0.5}, R: 0.1}
-	// struts[1] = lattices.Strut{P0: mgl64.Vec3{0.5, -0.5, -0.5}, P1: mgl64.Vec3{0.5, -0.5, 0.5}, R: 0.1}
-	// struts[2] = lattices.Strut{P0: mgl64.Vec3{0.5, 0.5, -0.5}, P1: mgl64.Vec3{0.5, 0.5, 0.5}, R: 0.1}
-	// struts[3] = lattices.Strut{P0: mgl64.Vec3{-0.5, 0.5, -0.5}, P1: mgl64.Vec3{-0.5, 0.5, 0.5}, R: 0.1}
-	// lat := lattices.Lattice{Struts: struts}
 	return lat.Density(x, y, z)
-	// points := make([]mgl64.Vec2, 4)
-	// points[0] = mgl64.Vec2{-0.5, -0.5}
-	// points[1] = mgl64.Vec2{0.5, -0.5}
-	// points[2] = mgl64.Vec2{0.5, 0.5}
-	// points[3] = mgl64.Vec2{-0.5, 0.5}
-	// if z < -0.5 || z > 0.5 {
-	// 	return 0.0
-	// }
-	// for i := 0; i < 4; i++ {
-	// 	r := mgl64.Vec2{x - points[i][0], y - points[i][1]}
-	// 	if r.Len() < 0.1 {
-	// 		return 1.0
-	// 	}
-	// }
-	// return 0.0
 }
-
-// func density(x, y, z float64) float64 {
-// 	x0, y0, z0 := 0.0, 0.0, 0.0
-// 	x = x - x0
-// 	y = y - y0
-// 	z = z - z0
-// 	// sphere
-// 	r := math.Sqrt((x * x) + (y * y) + (z * z))
-// 	if r < 0.25 {
-// 		return 0.0
-// 	} else if r < 0.75 {
-// 		return 1.0
-// 	} else {
-// 		return 0
-// 	}
-// 	// cube
-// 	// if x < 0.5 && x > -0.5 && y < 0.5 && y > -0.5 && z < 0.5 && z > -0.5 {
-// 	// 	return 0.01
-// 	// } else {
-// 	// 	return 0
-// 	// }
-// 	// cube with a spherical hole
-// 	// r := math.Sqrt((x*x + y*y + z*z))
-// 	// if r < 0.25 {
-// 	// 	return 0.0
-// 	// }
-// 	// if x < 0.5 && x > -0.5 && y < 0.5 && y > -0.5 && z < 0.5 && z > -0.5 {
-// 	// 	return 1.0
-// 	// }
-// 	// return 0
-// 	// sphere with a cubic hole
-// 	// r := math.Sqrt((x*x + y*y + z*z))
-// 	// if math.Abs(x) < 0.25 && math.Abs(y) < 0.25 && math.Abs(z) < 0.25 {
-// 	// 	return 0.0
-// 	// } else if r < 0.5 {
-// 	// 	return 1.0
-// 	// } else {
-// 	// 	return 0.0
-// 	// }
-// }
 
 func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) float64 {
 	// normalize components of the ray
@@ -134,15 +65,44 @@ func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) f
 		x := origin[0] + direction[0]*s
 		y := origin[1] + direction[1]*s
 		z := origin[2] + direction[2]*s
-		// T += lat.Density(x, y, z) * ds
 		T += density(x, y, z) * ds
+	}
+	return math.Exp(-T)
+}
+
+func integrate_hierarchical(origin, direction mgl64.Vec3, ds, smin, smax float64) float64 {
+	// normalize components of the ray
+	direction = direction.Normalize()
+	// integrate
+	T := 0.0
+	for s := smin; s <= smax; s += 9 * ds {
+		x := origin[0] + direction[0]*s
+		y := origin[1] + direction[1]*s
+		z := origin[2] + direction[2]*s
+		rho := density(x, y, z)
+		if rho > 0 {
+			T += rho * ds // central sample
+			for _s := s - 4*ds; _s < s; _s += ds {
+				x := origin[0] + direction[0]*_s
+				y := origin[1] + direction[1]*_s
+				z := origin[2] + direction[2]*_s
+				T += density(x, y, z) * ds
+			}
+			for _s := s + ds; _s <= s+4*ds; _s += ds {
+				x := origin[0] + direction[0]*_s
+				y := origin[1] + direction[1]*_s
+				z := origin[2] + direction[2]*_s
+				T += density(x, y, z) * ds
+			}
+		}
 	}
 	return math.Exp(-T)
 }
 
 func computePixel(img *[res][res]float64, i, j int, origin, direction mgl64.Vec3, ds, smin, smax float64, wg *sync.WaitGroup) {
 	defer wg.Done()
-	img[i][j] = integrate_along_ray(origin, direction, ds, smin, smax)
+	// img[i][j] = integrate_along_ray(origin, direction, ds, smin, smax)
+	img[i][j] = integrate_hierarchical(origin, direction, ds, smin, smax)
 }
 
 func timer() func() {
@@ -184,20 +144,6 @@ func main() {
 	for i_img := 0; i_img < num_images; i_img++ {
 		dth := 360.0 / num_images
 		var th, phi float64
-		// if i_img < 4 {
-		// 	th = 90.0*float64(i_img%4) + 45.0
-		// 	phi = math.Pi / 2.0
-		// } else if i_img < 6 {
-		// 	th = 0
-		// 	if i_img == 4 {
-		// 		phi = 0.0001
-		// 	} else {
-		// 		phi = math.Pi
-		// 	}
-		// } else {
-		// 	th = rand.Float64() * 360.0
-		// 	phi = rand.Float64() * math.Pi
-		// }
 
 		th = float64(i_img) * dth
 		phi = math.Pi / 2.0
@@ -208,14 +154,6 @@ func main() {
 				img[i][j] = 0
 			}
 		}
-
-		// angle from vertical
-		// phi := 90.0 * math.Pi / 180.0
-		// z := rand.Float64()*2 - 1
-		// phi := math.Acos(z)
-		// spiral trajectory
-		// z := 0.99 - 1.98*float64(i_img)/float64(num_images-1)
-		// phi := math.Acos(z)
 
 		origin := mgl64.Vec3{R * math.Cos(mgl64.DegToRad(float64(th))) * math.Sin(phi), R * math.Sin(mgl64.DegToRad(float64(th))) * math.Sin(phi), math.Cos(phi) * R}
 		center := mgl64.Vec3{0, 0, 0}
@@ -251,12 +189,6 @@ func main() {
 			for j := 0; j < res; j++ {
 				val := img[i][j]
 				c := color.RGBA64{uint16(val * 0xffff), uint16(val * 0xffff), uint16(val * 0xffff), 0xffff}
-				// var c color.RGBA64
-				// if val == 1 {
-				// 	c = color.RGBA64{0, 0, 0, 0x0000}
-				// } else {
-				// 	c = color.RGBA64{uint16(val * 0xffff), uint16(val * 0xffff), uint16(val * 0xffff), 0xffff}
-				// }
 				myImage.SetRGBA64(i, j, c)
 			}
 		}
