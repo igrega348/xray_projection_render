@@ -17,7 +17,7 @@ import (
 	"github.com/igrega348/sphere_render/lattices"
 )
 
-const res = 128
+const res = 200
 const fov = 45.0
 const R = 3.0
 const rad = 0.1
@@ -52,7 +52,16 @@ func make_lattice() lattices.Lattice {
 
 var lat = make_lattice()
 
+func deform(x, y, z float64) (float64, float64, float64) {
+	// Try Gaussian displacement field
+	A := 0.05
+	sigma := 0.2
+	y = y - A*math.Exp(-(x*x+y*y+z*z)/(2*sigma*sigma))
+	return x, y, z
+}
+
 func density(x, y, z float64) float64 {
+	x, y, z = deform(x, y, z)
 	return lat.Density(x, y, z)
 }
 
