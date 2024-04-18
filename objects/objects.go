@@ -1,4 +1,4 @@
-package lattices
+package objects
 
 import (
 	"fmt"
@@ -7,10 +7,18 @@ import (
 	"github.com/go-gl/mathgl/mgl64"
 )
 
+type Object interface {
+	Density(x, y, z float64) float64
+	ToYAML() map[string]interface{}
+	FromYAML(data map[string]interface{}) error
+}
+
 type Sphere struct {
+	Object
 	// parameters are center and radius
 	Center mgl64.Vec3
 	Radius float64
+	Rho    float64
 }
 
 func (s *Sphere) ToYAML() map[string]interface{} {
@@ -38,15 +46,17 @@ func (s *Sphere) Density(x, y, z float64) float64 {
 	z = z - s.Center[2]
 	r_2 := x*x + y*y + z*z
 	if r_2 < s.Radius*s.Radius {
-		return 1.0
+		return s.Rho
 	}
 	return 0.0
 }
 
 type Cube struct {
+	Object
 	// parameters are center and side length
 	Center mgl64.Vec3
 	Side   float64
+	Rho    float64
 }
 
 func (c *Cube) ToYAML() map[string]interface{} {
@@ -73,12 +83,13 @@ func (c *Cube) Density(x, y, z float64) float64 {
 	y = math.Abs(y - c.Center[1])
 	z = math.Abs(z - c.Center[2])
 	if x < 0.5*c.Side && y < 0.5*c.Side && z < 0.5*c.Side {
-		return 1.0
+		return c.Rho
 	}
 	return 0.0
 }
 
 type Cylinder struct {
+	Object
 	// cylinder is a line segment with thickness
 	P0, P1 mgl64.Vec3
 	R      float64
@@ -105,6 +116,42 @@ func (c *Cylinder) FromYAML(data map[string]interface{}) error {
 		return fmt.Errorf("r is not a float64")
 	}
 	return nil
+}
+
+func (cyl *Cylinder) Density(x, y, z float64) float64 {
+	// get the vector from the point to the line
+	v := cyl.P1.Sub(cyl.P0)
+	w := mgl64.Vec3{x, y, z}.Sub(cyl.P0)
+	// get the projection of w onto v
+	c := w.Dot(v) / v.Dot(v)
+	if c < 0.0 || c > 1.0 { // point is definitely not on the line
+		return 0.0
+	}
+	// get the distance from the point to the line
+	d := w.Sub(v.Mul(c)).Len()
+	if d < cyl.R {
+		return 1.0
+	} else {
+		return 0.0
+	}
+}
+
+type ObjectCollection struct {
+	Objects []Object
+}
+
+func (oc *ObjectCollection) Density(x, y, z float64) float64 {
+	var density float64
+	for _, object := range oc.Objects {
+		density += object.Density(x, y, z)
+	}
+	// clip between 0 and 1
+	if density < 0.0 {
+		density = 0.0
+	} else if density > 1.0 {
+		density = 1.0
+	}
+	return density
 }
 
 type Lattice struct {

@@ -14,18 +14,17 @@ import (
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/schollz/progressbar/v3"
 
-	"github.com/igrega348/sphere_render/lattices"
+	"github.com/igrega348/sphere_render/objects"
 )
 
 const res = 1024
 const fov = 45.0
-const R = 3.0
-const rad = 0.1
-const num_images = 1
+const R = 6.0
+const num_images = 4
 const flat_field = 0.0
 
-func make_lattice() lattices.Lattice {
-	var kelvin_uc = lattices.MakeKelvin(rad)
+func make_lattice() objects.Lattice {
+	var kelvin_uc = objects.MakeKelvin(0.075)
 	var struts = kelvin_uc.Struts
 	nx := 4
 	ny := 4
@@ -34,12 +33,12 @@ func make_lattice() lattices.Lattice {
 	dx := mgl64.Vec3{1, 0, 0}
 	dy := mgl64.Vec3{0, 1, 0}
 	dz := mgl64.Vec3{0, 0, 1}
-	var tess = make([]lattices.Strut, nx*ny*nz*len(struts))
+	var tess = make([]objects.Cylinder, nx*ny*nz*len(struts))
 	for i := 0; i < nx; i++ {
 		for j := 0; j < ny; j++ {
 			for k := 0; k < nz; k++ {
 				for i_s := 0; i_s < len(struts); i_s++ {
-					tess[(i*ny*nz+j*nz+k)*len(struts)+i_s] = lattices.Strut{
+					tess[(i*ny*nz+j*nz+k)*len(struts)+i_s] = objects.Cylinder{
 						P0: struts[i_s].P0.Add(dx.Mul(float64(i)).Add(dy.Mul(float64(j)).Add(dz.Mul(float64(k))))).Mul(scaler).Sub(mgl64.Vec3{0.5, 0.5, 0.5}),
 						P1: struts[i_s].P1.Add(dx.Mul(float64(i)).Add(dy.Mul(float64(j)).Add(dz.Mul(float64(k))))).Mul(scaler).Sub(mgl64.Vec3{0.5, 0.5, 0.5}),
 						R:  struts[i_s].R * scaler}
@@ -47,10 +46,22 @@ func make_lattice() lattices.Lattice {
 			}
 		}
 	}
-	return lattices.Lattice{Struts: tess}
+	return objects.Lattice{Struts: tess}
 }
 
-var lat = make_lattice()
+//	func make_object() objects.Sphere {
+//		return objects.Sphere{Center: mgl64.Vec3{0, 0, 0}, Radius: 0.5, Rho: 1.0}
+//	}
+func make_object() objects.ObjectCollection {
+	return objects.ObjectCollection{
+		Objects: []objects.Object{
+			&objects.Cube{Center: mgl64.Vec3{0, 0, 0}, Side: 1.0, Rho: 1.0},
+			&objects.Sphere{Center: mgl64.Vec3{0, 0, 0}, Radius: 0.25, Rho: -1.0},
+		},
+	}
+}
+
+var lat = make_object()
 
 func deform(x, y, z float64) (float64, float64, float64) {
 	// Try Gaussian displacement field
@@ -63,12 +74,13 @@ func deform(x, y, z float64) (float64, float64, float64) {
 func density(x, y, z float64) float64 {
 	// x, y, z = deform(x, y, z)
 	// return lat.Density(x, y, z)
-	r_2 := x*x + y*y + z*z // sphere centered at origin
-	if r_2 < 0.25 {
-		return 1.0
-	} else {
-		return 0.0
-	}
+	return lat.Density(x, y, z)
+	// r_2 := x*x + y*y + z*z // sphere centered at origin
+	// if r_2 < 0.25 {
+	// 	return 1.0
+	// } else {
+	// 	return 0.0
+	// }
 }
 
 func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) float64 {
@@ -234,4 +246,18 @@ func main() {
 
 	jsonData, err := json.MarshalIndent(transform_params, "", "  ")
 	_, err = file.Write(jsonData)
+
+	if err != nil {
+		fmt.Println("Error writing JSON to file:", err)
+	}
+
+	// // write object to YAML
+	// data, err := yaml.Marshal(lat.ToYAML())
+	// if err != nil {
+	// 	fmt.Println("Error marshalling to YAML:", err)
+	// }
+	// err = os.WriteFile("object.yaml", data, 0644)
+	// if err != nil {
+	// 	fmt.Println("Error writing YAML to file:", err)
+	// }
 }
