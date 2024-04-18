@@ -85,13 +85,13 @@ func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) f
 	return math.Exp(-T)
 }
 
-func integrate_hierarchical(origin, direction mgl64.Vec3, ds, smin, smax float64) float64 {
+func integrate_hierarchical(origin, direction mgl64.Vec3, DS, smin, smax float64) float64 {
 	// normalize components of the ray
 	direction = direction.Normalize()
 	// integrate using sliding window
-	DS := 10 * ds
 	right := smin + DS
 	left := smin
+	ds := DS / 25.0
 	prev_rho := 0.0
 	T := 0.0
 	for right <= smax {
@@ -99,15 +99,21 @@ func integrate_hierarchical(origin, direction mgl64.Vec3, ds, smin, smax float64
 		y := origin[1] + direction[1]*right
 		z := origin[2] + direction[2]*right
 		rho := density(x, y, z)
-		for (rho+prev_rho > 0) && (left < right) {
-			x := origin[0] + direction[0]*left
-			y := origin[1] + direction[1]*left
-			z := origin[2] + direction[2]*left
-			T += density(x, y, z) * ds
+		if (rho == 0) != (prev_rho == 0) { // rho changed between left and right
 			left += ds
+			for left < right {
+				x := origin[0] + direction[0]*left
+				y := origin[1] + direction[1]*left
+				z := origin[2] + direction[2]*left
+				T += density(x, y, z) * ds
+				left += ds
+			}
+			T += rho * ds // reuse rho from right
+		} else {
+			T += rho * DS
 		}
-		T += rho * ds
 		prev_rho = rho
+		left = right
 		right += DS
 	}
 	return math.Exp(-T)
@@ -193,7 +199,7 @@ func main() {
 				wg.Add(1)
 				vx := mgl64.Vec3{float64(i)/(res/2) - 1, float64(j)/(res/2) - 1, -f}
 				vx = mgl64.TransformCoordinate(vx, camera)
-				go computePixel(&img, i, j, origin, vx.Sub(origin), 0.001, R-1.0, R+1.0, &wg)
+				go computePixel(&img, i, j, origin, vx.Sub(origin), 0.01, R-1.0, R+1.0, &wg)
 			}
 		}
 		wg.Wait()
