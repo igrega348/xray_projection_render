@@ -17,7 +17,7 @@ import (
 	"github.com/igrega348/sphere_render/lattices"
 )
 
-const res = 200
+const res = 1024
 const fov = 45.0
 const R = 3.0
 const rad = 0.1
@@ -61,8 +61,14 @@ func deform(x, y, z float64) (float64, float64, float64) {
 }
 
 func density(x, y, z float64) float64 {
-	x, y, z = deform(x, y, z)
-	return lat.Density(x, y, z)
+	// x, y, z = deform(x, y, z)
+	// return lat.Density(x, y, z)
+	r_2 := x*x + y*y + z*z // sphere centered at origin
+	if r_2 < 0.25 {
+		return 1.0
+	} else {
+		return 0.0
+	}
 }
 
 func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) float64 {
@@ -82,28 +88,27 @@ func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) f
 func integrate_hierarchical(origin, direction mgl64.Vec3, ds, smin, smax float64) float64 {
 	// normalize components of the ray
 	direction = direction.Normalize()
-	// integrate
+	// integrate using sliding window
+	DS := 10 * ds
+	right := smin + DS
+	left := smin
+	prev_rho := 0.0
 	T := 0.0
-	for s := smin; s <= smax; s += 9 * ds {
-		x := origin[0] + direction[0]*s
-		y := origin[1] + direction[1]*s
-		z := origin[2] + direction[2]*s
+	for right <= smax {
+		x := origin[0] + direction[0]*right
+		y := origin[1] + direction[1]*right
+		z := origin[2] + direction[2]*right
 		rho := density(x, y, z)
-		if rho > 0 {
-			T += rho * ds // central sample
-			for _s := s - 4*ds; _s < s; _s += ds {
-				x := origin[0] + direction[0]*_s
-				y := origin[1] + direction[1]*_s
-				z := origin[2] + direction[2]*_s
-				T += density(x, y, z) * ds
-			}
-			for _s := s + ds; _s <= s+4*ds; _s += ds {
-				x := origin[0] + direction[0]*_s
-				y := origin[1] + direction[1]*_s
-				z := origin[2] + direction[2]*_s
-				T += density(x, y, z) * ds
-			}
+		for (rho+prev_rho > 0) && (left < right) {
+			x := origin[0] + direction[0]*left
+			y := origin[1] + direction[1]*left
+			z := origin[2] + direction[2]*left
+			T += density(x, y, z) * ds
+			left += ds
 		}
+		T += rho * ds
+		prev_rho = rho
+		right += DS
 	}
 	return math.Exp(-T)
 }
