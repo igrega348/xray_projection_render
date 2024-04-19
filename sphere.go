@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/schollz/progressbar/v3"
+	"gopkg.in/yaml.v3"
 
 	"github.com/igrega348/sphere_render/objects"
 )
@@ -251,13 +252,13 @@ func main() {
 		fmt.Println("Error writing JSON to file:", err)
 	}
 
-	// // write object to YAML
-	// data, err := yaml.Marshal(lat.ToYAML())
-	// if err != nil {
-	// 	fmt.Println("Error marshalling to YAML:", err)
-	// }
-	// err = os.WriteFile("object.yaml", data, 0644)
-	// if err != nil {
-	// 	fmt.Println("Error writing YAML to file:", err)
-	// }
+	// write object to YAML
+	data, err := yaml.Marshal(lat.ToYAML())
+	if err != nil {
+		fmt.Println("Error marshalling to YAML:", err)
+	}
+	err = os.WriteFile("object.yaml", data, 0644)
+	if err != nil {
+		fmt.Println("Error writing YAML to file:", err)
+	}
 }

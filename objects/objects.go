@@ -26,6 +26,7 @@ func (s *Sphere) ToYAML() map[string]interface{} {
 		"type":   "sphere",
 		"center": s.Center,
 		"radius": s.Radius,
+		"rho":    s.Rho,
 	}
 }
 
@@ -64,6 +65,7 @@ func (c *Cube) ToYAML() map[string]interface{} {
 		"type":   "cube",
 		"center": c.Center,
 		"side":   c.Side,
+		"rho":    c.Rho,
 	}
 }
 
@@ -138,6 +140,17 @@ func (cyl *Cylinder) Density(x, y, z float64) float64 {
 
 type ObjectCollection struct {
 	Objects []Object
+}
+
+func (oc *ObjectCollection) ToYAML() map[string]interface{} {
+	var objects = make([]map[string]interface{}, len(oc.Objects))
+	for i, object := range oc.Objects {
+		objects[i] = object.ToYAML()
+	}
+	return map[string]interface{}{
+		"type":    "object_collection",
+		"objects": objects,
+	}
 }
 
 func (oc *ObjectCollection) Density(x, y, z float64) float64 {
