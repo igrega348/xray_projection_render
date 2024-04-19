@@ -38,6 +38,9 @@ func (s *Sphere) FromYAML(data map[string]interface{}) error {
 	if s.Radius, ok = data["radius"].(float64); !ok {
 		return fmt.Errorf("radius is not a float64")
 	}
+	if s.Rho, ok = data["rho"].(float64); !ok {
+		return fmt.Errorf("rho is not a float64")
+	}
 	return nil
 }
 
@@ -77,6 +80,9 @@ func (c *Cube) FromYAML(data map[string]interface{}) error {
 	if c.Side, ok = data["side"].(float64); !ok {
 		return fmt.Errorf("side is not a float64")
 	}
+	if c.Rho, ok = data["rho"].(float64); !ok {
+		return fmt.Errorf("rho is not a float64")
+	}
 	return nil
 }
 
@@ -95,6 +101,7 @@ type Cylinder struct {
 	// cylinder is a line segment with thickness
 	P0, P1 mgl64.Vec3
 	R      float64
+	Rho    float64
 }
 
 func (c *Cylinder) ToYAML() map[string]interface{} {
@@ -103,6 +110,7 @@ func (c *Cylinder) ToYAML() map[string]interface{} {
 		"p0":   c.P0,
 		"p1":   c.P1,
 		"r":    c.R,
+		"rho":  c.Rho,
 	}
 }
 
@@ -116,6 +124,9 @@ func (c *Cylinder) FromYAML(data map[string]interface{}) error {
 	}
 	if c.R, ok = data["r"].(float64); !ok {
 		return fmt.Errorf("r is not a float64")
+	}
+	if c.Rho, ok = data["rho"].(float64); !ok {
+		return fmt.Errorf("rho is not a float64")
 	}
 	return nil
 }
@@ -132,7 +143,7 @@ func (cyl *Cylinder) Density(x, y, z float64) float64 {
 	// get the distance from the point to the line
 	d := w.Sub(v.Mul(c)).Len()
 	if d < cyl.R {
-		return 1.0
+		return cyl.Rho
 	} else {
 		return 0.0
 	}
@@ -169,6 +180,8 @@ func (oc *ObjectCollection) Density(x, y, z float64) float64 {
 
 type Lattice struct {
 	// lattice is a collection of struts
+	// It's good to have a separate class for lattice because
+	// if we don't allow negative volumes, we can have faster iteration
 	Struts []Cylinder
 }
 
@@ -220,6 +233,28 @@ func (l *Lattice) Density(x, y, z float64) float64 {
 		}
 	}
 	return 0.0
+}
+
+func (lat *Lattice) Tesselate(nx, ny, nz int) Lattice {
+	scaler := 1.0 / float64(max(nx, ny, nz))
+	dx := mgl64.Vec3{1, 0, 0}
+	dy := mgl64.Vec3{0, 1, 0}
+	dz := mgl64.Vec3{0, 0, 1}
+	var tess = make([]Cylinder, nx*ny*nz*len(lat.Struts))
+	for i := 0; i < nx; i++ {
+		for j := 0; j < ny; j++ {
+			for k := 0; k < nz; k++ {
+				for i_s := 0; i_s < len(lat.Struts); i_s++ {
+					dr := dx.Mul(float64(i)).Add(dy.Mul(float64(j)).Add(dz.Mul(float64(k))))
+					tess[(i*ny*nz+j*nz+k)*len(lat.Struts)+i_s] = Cylinder{
+						P0: lat.Struts[i_s].P0.Add(dr).Mul(scaler).Sub(mgl64.Vec3{0.5, 0.5, 0.5}),
+						P1: lat.Struts[i_s].P1.Add(dr).Mul(scaler).Sub(mgl64.Vec3{0.5, 0.5, 0.5}),
+						R:  lat.Struts[i_s].R * scaler}
+				}
+			}
+		}
+	}
+	return Lattice{Struts: tess}
 }
 
 func MakeKelvin(rad float64) Lattice {

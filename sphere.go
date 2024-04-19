@@ -18,51 +18,58 @@ import (
 	"github.com/igrega348/sphere_render/objects"
 )
 
-const res = 1024
+const res = 256
 const fov = 45.0
 const R = 6.0
-const num_images = 4
+const num_images = 1
 const flat_field = 0.0
 
-func make_lattice() objects.Lattice {
+func make_object() objects.Lattice {
 	var kelvin_uc = objects.MakeKelvin(0.075)
-	var struts = kelvin_uc.Struts
-	nx := 4
-	ny := 4
-	nz := 4
-	scaler := 1.0 / float64(max(nx, ny, nz))
-	dx := mgl64.Vec3{1, 0, 0}
-	dy := mgl64.Vec3{0, 1, 0}
-	dz := mgl64.Vec3{0, 0, 1}
-	var tess = make([]objects.Cylinder, nx*ny*nz*len(struts))
-	for i := 0; i < nx; i++ {
-		for j := 0; j < ny; j++ {
-			for k := 0; k < nz; k++ {
-				for i_s := 0; i_s < len(struts); i_s++ {
-					tess[(i*ny*nz+j*nz+k)*len(struts)+i_s] = objects.Cylinder{
-						P0: struts[i_s].P0.Add(dx.Mul(float64(i)).Add(dy.Mul(float64(j)).Add(dz.Mul(float64(k))))).Mul(scaler).Sub(mgl64.Vec3{0.5, 0.5, 0.5}),
-						P1: struts[i_s].P1.Add(dx.Mul(float64(i)).Add(dy.Mul(float64(j)).Add(dz.Mul(float64(k))))).Mul(scaler).Sub(mgl64.Vec3{0.5, 0.5, 0.5}),
-						R:  struts[i_s].R * scaler}
-				}
-			}
-		}
+	return kelvin_uc.Tesselate(3, 3, 3)
+}
+
+// func load_object() objects.Lattice {
+// 	fn := "object.yaml"
+// 	data, err := os.ReadFile(fn)
+// 	if err != nil {
+// 		fmt.Println("Error reading file:", err)
+// 	}
+// 	lat := objects.Lattice{}
+// 	err = yaml.Unmarshal(data, &lat)
+// 	if err != nil {
+// 		fmt.Println("Error unmarshalling YAML:", err)
+// 	}
+// 	return lat
+// }
+
+func load_object() objects.Sphere {
+	fn := "sphere.yaml"
+	data, err := os.ReadFile(fn)
+	if err != nil {
+		fmt.Println("Error reading file:", err)
 	}
-	return objects.Lattice{Struts: tess}
+	sphere := objects.Sphere{}
+	err = yaml.Unmarshal(data, &sphere)
+	if err != nil {
+		fmt.Println("Error unmarshalling YAML:", err)
+	}
+	return sphere
 }
 
 //	func make_object() objects.Sphere {
 //		return objects.Sphere{Center: mgl64.Vec3{0, 0, 0}, Radius: 0.5, Rho: 1.0}
 //	}
-func make_object() objects.ObjectCollection {
-	return objects.ObjectCollection{
-		Objects: []objects.Object{
-			&objects.Cube{Center: mgl64.Vec3{0, 0, 0}, Side: 1.0, Rho: 1.0},
-			&objects.Sphere{Center: mgl64.Vec3{0, 0, 0}, Radius: 0.25, Rho: -1.0},
-		},
-	}
-}
+// func make_object() objects.ObjectCollection {
+// 	return objects.ObjectCollection{
+// 		Objects: []objects.Object{
+// 			&objects.Cube{Center: mgl64.Vec3{0, 0, 0}, Side: 1.0, Rho: 1.0},
+// 			&objects.Sphere{Center: mgl64.Vec3{0, 0, 0}, Radius: 0.25, Rho: -1.0},
+// 		},
+// 	}
+// }
 
-var lat = make_object()
+var lat = load_object()
 
 func deform(x, y, z float64) (float64, float64, float64) {
 	// Try Gaussian displacement field
