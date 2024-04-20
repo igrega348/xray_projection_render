@@ -17,10 +17,10 @@ import (
 	"github.com/igrega348/sphere_render/objects"
 )
 
-const res = 128
+const res = 2000
 const fov = 45.0
 const R = 4.5
-const num_images = 1
+const num_images = 256
 const flat_field = 0.0
 
 // func make_object() objects.Lattice {
@@ -130,7 +130,7 @@ func integrate_hierarchical(origin, direction mgl64.Vec3, DS, smin, smax float64
 	// integrate using sliding window
 	right := smin + DS
 	left := smin
-	ds := DS / 25.0
+	ds := DS / 10.0
 	prev_rho := 0.0
 	T := flat_field
 	for right <= smax {
@@ -204,7 +204,7 @@ func main() {
 
 	// Progress indicator
 	wrt.Write([]byte("Rendering images...\n"))
-	s := fmt.Sprintf("%7s%53s%6s\n", "Image", "Progress", "ETA")
+	s := fmt.Sprintf("%7s%54s%6s%6s\n", "Image", "Progress", "Pix/s", "ETA")
 	wrt.Write([]byte(s))
 	pix_step := res * res / 50
 	t0 := time.Now()
@@ -241,6 +241,7 @@ func main() {
 			}
 		}
 
+		t1 := time.Now()
 		var wg sync.WaitGroup
 		f := 1 / math.Tan(mgl64.DegToRad(fov/2))
 		transform_params.FL_X = f * res / 2.0
@@ -250,7 +251,7 @@ func main() {
 				wg.Add(1)
 				vx := mgl64.Vec3{float64(i)/(res/2) - 1, float64(j)/(res/2) - 1, -f}
 				vx = mgl64.TransformCoordinate(vx, camera)
-				go computePixel(&img, i, j, origin, vx.Sub(origin), 0.005, R-1.41, R+1.41, &wg)
+				go computePixel(&img, i, j, origin, vx.Sub(origin), 0.01, R-1.41, R+1.41, &wg)
 				if (i*res+j)%(pix_step) == 0 {
 					// fmt.Printf(".")
 					wrt.Write([]byte("."))
@@ -262,7 +263,8 @@ func main() {
 
 		// progress indicator
 		eta := time.Since(t0) * time.Duration(num_images-i_img-1) / time.Duration(i_img+1)
-		s = fmt.Sprintf("] %02d:%02d\n", int(eta.Minutes())%60, int(eta.Seconds())%60)
+		pix_per_sec := float64(res*res) / time.Since(t1).Seconds()
+		s = fmt.Sprintf("] %5.0f %02d:%02d\n", pix_per_sec, int(eta.Minutes())%60, int(eta.Seconds())%60)
 		wrt.Write([]byte(s))
 
 		myImage := image.NewRGBA(image.Rect(0, 0, res, res))
