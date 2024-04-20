@@ -6,6 +6,8 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
+	"log"
 	"math"
 	"os"
 	"sync"
@@ -20,7 +22,7 @@ import (
 const res = 128
 const fov = 45.0
 const R = 5.0
-const num_images = 6
+const num_images = 1
 const flat_field = 0.0
 
 // func make_object() objects.Lattice {
@@ -33,17 +35,17 @@ func load_object() objects.Lattice {
 	fn := "lattice.yaml"
 	data, err := os.ReadFile(fn)
 	if err != nil {
-		fmt.Println("Error reading file:", err)
+		log.Println("Error reading file:", err)
 	}
 	out := map[string]interface{}{}
 	err = yaml.Unmarshal(data, &out)
 	if err != nil {
-		fmt.Println("Error unmarshalling YAML to map", err)
+		log.Println("Error unmarshalling YAML to map", err)
 	}
 	lat := objects.Lattice{}
 	err = lat.FromYAML(out)
 	if err != nil {
-		fmt.Println("Error converting to lattice:", err)
+		log.Println("Error converting to lattice:", err)
 	}
 	if out["tessellate"] != nil {
 		nx := out["tessellate"].([]interface{})[0].(int)
@@ -51,7 +53,7 @@ func load_object() objects.Lattice {
 		nz := out["tessellate"].([]interface{})[2].(int)
 		lat = lat.Tesselate(nx, ny, nz)
 	}
-	fmt.Println("Lattice loaded")
+	log.Println("Lattice loaded")
 	return lat
 }
 
@@ -59,18 +61,18 @@ func load_object() objects.Lattice {
 // 	fn := "pillars.yaml"
 // 	data, err := os.ReadFile(fn)
 // 	if err != nil {
-// 		fmt.Println("Error reading file:", err)
+// 		log.Println("Error reading file:", err)
 // 	}
 
 // 	out := map[string]interface{}{}
 // 	err = yaml.Unmarshal(data, &out)
 // 	if err != nil {
-// 		fmt.Println("Error unmarshalling YAML:", err)
+// 		log.Println("Error unmarshalling YAML:", err)
 // 	}
 // 	balls := objects.ObjectCollection{}
 // 	err = balls.FromYAML(out)
 // 	if err != nil {
-// 		fmt.Println("Error converting to object collection:", err)
+// 		log.Println("Error converting to object collection:", err)
 // 	}
 // 	return balls
 // }
@@ -163,7 +165,7 @@ func computePixel(img *[res][res]float64, i, j int, origin, direction mgl64.Vec3
 func timer() func() {
 	start := time.Now()
 	return func() {
-		fmt.Println(time.Since(start))
+		log.Println(time.Since(start))
 	}
 }
 
@@ -184,6 +186,19 @@ type TransformParams struct {
 
 func main() {
 	defer timer()()
+
+	// fileName := fmt.Sprintf("job_%s.log", os.Getenv("JOB_ID"))
+	fileName := "job.log"
+	// open log file
+	logFile, err := os.OpenFile(fileName, os.O_CREATE, 0644)
+	if err != nil {
+		fmt.Println("Could not open file for logging")
+	}
+	defer logFile.Close()
+
+	// redirect all the output to file
+	wrt := io.MultiWriter(os.Stdout, logFile)
+
 	var img [res][res]float64
 
 	transform_params := TransformParams{
@@ -197,13 +212,15 @@ func main() {
 	min_val, max_val := 1.0, 0.0
 
 	// Progress indicator
-	fmt.Println("Rendering images...")
-	fmt.Printf("%7s%53s%6s\n", "Image", "Progress", "ETA")
+	wrt.Write([]byte("Rendering images...\n"))
+	s := fmt.Sprintf("%7s%53s%6s\n", "Image", "Progress", "ETA")
+	wrt.Write([]byte(s))
 	pix_step := res * res / 50
 	t0 := time.Now()
 
 	for i_img := 0; i_img < num_images; i_img++ {
-		fmt.Printf("%3d/%3d [", i_img+1, num_images)
+		s = fmt.Sprintf("%3d/%3d [", i_img+1, num_images)
+		wrt.Write([]byte(s))
 
 		dth := 360.0 / num_images
 		var th, phi float64
@@ -244,8 +261,9 @@ func main() {
 				vx = mgl64.TransformCoordinate(vx, camera)
 				go computePixel(&img, i, j, origin, vx.Sub(origin), 0.005, R-1.0, R+1.0, &wg)
 				if (i*res+j)%(pix_step) == 0 {
-					// fmt.Printf(".")
-					os.Stdout.Write([]byte("."))
+					// log.Printf(".")
+					wrt.Write([]byte("."))
+					// os.Stdout.Write([]byte("."))
 				}
 			}
 		}
@@ -253,7 +271,8 @@ func main() {
 
 		// progress indicator
 		eta := time.Since(t0) * time.Duration(num_images-i_img-1) / time.Duration(i_img+1)
-		fmt.Printf("] %02d:%02d\n", int(eta.Minutes())%60, int(eta.Seconds())%60)
+		s = fmt.Sprintf("] %02d:%02d\n", int(eta.Minutes())%60, int(eta.Seconds())%60)
+		wrt.Write([]byte(s))
 
 		myImage := image.NewRGBA(image.Rect(0, 0, res, res))
 		for i := 0; i < res; i++ {
@@ -270,7 +289,8 @@ func main() {
 			}
 		}
 		if i_img == 0 || i_img == num_images-1 {
-			fmt.Println("Min value:", min_val, "Max value:", max_val)
+			s = fmt.Sprint("Min value: ", min_val, " Max value: ", max_val)
+			wrt.Write([]byte(s))
 		}
 		// Save to out.png
 		filename := fmt.Sprintf("pics/out%03d.png", i_img)
@@ -284,33 +304,33 @@ func main() {
 		transform_params.Frames = append(transform_params.Frames, OneParam{FilePath: filename, TransformMatrix: rows})
 	}
 
-	// fmt.Println("Min value:", min_val, "Max value:", max_val)
+	// log.Println("Min value:", min_val, "Max value:", max_val)
 
 	// Optionally, write JSON data to a file
 	file, err := os.Create("transforms.json")
 	if err != nil {
-		fmt.Println("Error creating file:", err)
+		log.Println("Error creating file:", err)
 		return
 	}
 	defer file.Close()
 
 	jsonData, err := json.MarshalIndent(transform_params, "", "  ")
 	if err != nil {
-		fmt.Println("Error marshalling to JSON:", err)
+		log.Println("Error marshalling to JSON:", err)
 	}
 	_, err = file.Write(jsonData)
 
 	if err != nil {
-		fmt.Println("Error writing JSON to file:", err)
+		log.Println("Error writing JSON to file:", err)
 	}
 
 	// write object to YAML
 	data, err := yaml.Marshal(lat.ToYAML())
 	if err != nil {
-		fmt.Println("Error marshalling to YAML:", err)
+		log.Println("Error marshalling to YAML:", err)
 	}
 	err = os.WriteFile("object.yaml", data, 0644)
 	if err != nil {
-		fmt.Println("Error writing YAML to file:", err)
+		log.Println("Error writing YAML to file:", err)
 	}
 }
