@@ -19,7 +19,7 @@ import (
 
 const res = 128
 const fov = 45.0
-const R = 5.0
+const R = 4.5
 const num_images = 1
 const flat_field = 0.0
 
@@ -82,6 +82,10 @@ func load_object() objects.Lattice {
 // 			&objects.Sphere{Center: mgl64.Vec3{0, 0, 0}, Radius: 0.25, Rho: -1.0},
 // 		},
 // 	}
+// }
+
+// func make_object() objects.Cube {
+// 	return objects.Cube{Center: mgl64.Vec3{0, 0, 0}, Side: 2.0, Rho: 1.0}
 // }
 
 var lat = load_object()
@@ -246,7 +250,7 @@ func main() {
 				wg.Add(1)
 				vx := mgl64.Vec3{float64(i)/(res/2) - 1, float64(j)/(res/2) - 1, -f}
 				vx = mgl64.TransformCoordinate(vx, camera)
-				go computePixel(&img, i, j, origin, vx.Sub(origin), 0.005, R-1.0, R+1.0, &wg)
+				go computePixel(&img, i, j, origin, vx.Sub(origin), 0.005, R-1.41, R+1.41, &wg)
 				if (i*res+j)%(pix_step) == 0 {
 					// fmt.Printf(".")
 					wrt.Write([]byte("."))
