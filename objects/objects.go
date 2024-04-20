@@ -32,8 +32,12 @@ func (s *Sphere) ToYAML() map[string]interface{} {
 
 func (s *Sphere) FromYAML(data map[string]interface{}) error {
 	var ok bool
-	if s.Center, ok = data["center"].(mgl64.Vec3); !ok {
+	var slice []interface{}
+	if slice, ok = data["center"].([]interface{}); !ok {
 		return fmt.Errorf("center is not a Vec3")
+	}
+	for i, val := range slice {
+		s.Center[i] = val.(float64)
 	}
 	if s.Radius, ok = data["radius"].(float64); !ok {
 		return fmt.Errorf("radius is not a float64")
@@ -74,8 +78,12 @@ func (c *Cube) ToYAML() map[string]interface{} {
 
 func (c *Cube) FromYAML(data map[string]interface{}) error {
 	var ok bool
-	if c.Center, ok = data["center"].(mgl64.Vec3); !ok {
+	var slice []interface{}
+	if slice, ok = data["center"].([]interface{}); !ok {
 		return fmt.Errorf("center is not a Vec3")
+	}
+	for i, val := range slice {
+		c.Center[i] = val.(float64)
 	}
 	if c.Side, ok = data["side"].(float64); !ok {
 		return fmt.Errorf("side is not a float64")
@@ -116,11 +124,18 @@ func (c *Cylinder) ToYAML() map[string]interface{} {
 
 func (c *Cylinder) FromYAML(data map[string]interface{}) error {
 	var ok bool
-	if c.P0, ok = data["p0"].(mgl64.Vec3); !ok {
+	var slice []interface{}
+	if slice, ok = data["p0"].([]interface{}); !ok {
 		return fmt.Errorf("p0 is not a Vec3")
 	}
-	if c.P1, ok = data["p1"].(mgl64.Vec3); !ok {
+	for i, val := range slice {
+		c.P0[i] = val.(float64)
+	}
+	if slice, ok = data["p1"].([]interface{}); !ok {
 		return fmt.Errorf("p1 is not a Vec3")
+	}
+	for i, val := range slice {
+		c.P1[i] = val.(float64)
 	}
 	if c.R, ok = data["r"].(float64); !ok {
 		return fmt.Errorf("r is not a float64")
@@ -162,6 +177,41 @@ func (oc *ObjectCollection) ToYAML() map[string]interface{} {
 		"type":    "object_collection",
 		"objects": objects,
 	}
+}
+
+func (oc *ObjectCollection) FromYAML(data map[string]interface{}) error {
+	var objects []Object
+	if objects_data, ok := data["objects"].([]interface{}); ok {
+		objects = make([]Object, len(objects_data))
+		for i, object_data := range objects_data {
+			switch object_data.(map[string]interface{})["type"] {
+			case "sphere":
+				object := Sphere{}
+				if err := object.FromYAML(object_data.(map[string]interface{})); err != nil {
+					return err
+				}
+				objects[i] = &object
+			case "cube":
+				object := Cube{}
+				if err := object.FromYAML(object_data.(map[string]interface{})); err != nil {
+					return err
+				}
+				objects[i] = &object
+			case "cylinder":
+				object := Cylinder{}
+				if err := object.FromYAML(object_data.(map[string]interface{})); err != nil {
+					return err
+				}
+				objects[i] = &object
+			default:
+				return fmt.Errorf("unknown object type")
+			}
+		}
+	} else {
+		return fmt.Errorf("objects is not a list")
+	}
+	oc.Objects = objects
+	return nil
 }
 
 func (oc *ObjectCollection) Density(x, y, z float64) float64 {

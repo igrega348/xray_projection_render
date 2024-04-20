@@ -18,48 +18,36 @@ import (
 	"github.com/igrega348/sphere_render/objects"
 )
 
-const res = 256
+const res = 2000
 const fov = 45.0
-const R = 6.0
-const num_images = 1
+const R = 5.0
+const num_images = 256
 const flat_field = 0.0
 
-func make_object() objects.Lattice {
-	var kelvin_uc = objects.MakeKelvin(0.075)
-	return kelvin_uc.Tesselate(3, 3, 3)
-}
-
-// func load_object() objects.Lattice {
-// 	fn := "object.yaml"
-// 	data, err := os.ReadFile(fn)
-// 	if err != nil {
-// 		fmt.Println("Error reading file:", err)
-// 	}
-// 	lat := objects.Lattice{}
-// 	err = yaml.Unmarshal(data, &lat)
-// 	if err != nil {
-// 		fmt.Println("Error unmarshalling YAML:", err)
-// 	}
-// 	return lat
+// func make_object() objects.Lattice {
+// 	var kelvin_uc = objects.MakeKelvin(0.075)
+// 	return kelvin_uc.Tesselate(3, 3, 3)
 // }
 
-func load_object() objects.Sphere {
-	fn := "sphere.yaml"
+func load_object() objects.ObjectCollection {
+	fn := "balls.yaml"
 	data, err := os.ReadFile(fn)
 	if err != nil {
 		fmt.Println("Error reading file:", err)
 	}
-	sphere := objects.Sphere{}
-	err = yaml.Unmarshal(data, &sphere)
+	out := map[string]interface{}{}
+	err = yaml.Unmarshal(data, &out)
 	if err != nil {
 		fmt.Println("Error unmarshalling YAML:", err)
 	}
-	return sphere
+	balls := objects.ObjectCollection{}
+	err = balls.FromYAML(out)
+	if err != nil {
+		fmt.Println("Error converting to object collection:", err)
+	}
+	return balls
 }
 
-//	func make_object() objects.Sphere {
-//		return objects.Sphere{Center: mgl64.Vec3{0, 0, 0}, Radius: 0.5, Rho: 1.0}
-//	}
 // func make_object() objects.ObjectCollection {
 // 	return objects.ObjectCollection{
 // 		Objects: []objects.Object{
@@ -113,7 +101,7 @@ func integrate_hierarchical(origin, direction mgl64.Vec3, DS, smin, smax float64
 	left := smin
 	ds := DS / 25.0
 	prev_rho := 0.0
-	T := 0.0
+	T := flat_field
 	for right <= smax {
 		x := origin[0] + direction[0]*right
 		y := origin[1] + direction[1]*right
@@ -253,6 +241,9 @@ func main() {
 	defer file.Close()
 
 	jsonData, err := json.MarshalIndent(transform_params, "", "  ")
+	if err != nil {
+		fmt.Println("Error marshalling to JSON:", err)
+	}
 	_, err = file.Write(jsonData)
 
 	if err != nil {
