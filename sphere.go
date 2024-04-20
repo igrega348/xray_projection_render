@@ -6,7 +6,6 @@ import (
 	"image"
 	"image/color"
 	"image/png"
-	"io"
 	"math"
 	"os"
 	"sync"
@@ -185,17 +184,7 @@ type TransformParams struct {
 
 func main() {
 	defer timer()()
-
-	fileName := fmt.Sprintf("job_%s.log", os.Getenv("JOB_ID"))
-	// open log file
-	logFile, err := os.OpenFile(fileName, os.O_CREATE, 0644)
-	if err != nil {
-		fmt.Println("Could not open file for logging")
-	}
-	defer logFile.Close()
-
-	// redirect all the output to file
-	wrt := io.MultiWriter(os.Stdout, logFile)
+	wrt := os.Stdout
 
 	var img [res][res]float64
 
@@ -287,7 +276,7 @@ func main() {
 			}
 		}
 		if i_img == 0 || i_img == num_images-1 {
-			s = fmt.Sprint("Min value: ", min_val, " Max value: ", max_val)
+			s = fmt.Sprint("Min value: ", min_val, " Max value: ", max_val, "\n")
 			wrt.Write([]byte(s))
 		}
 		// Save to out.png
