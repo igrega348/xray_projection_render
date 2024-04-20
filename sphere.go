@@ -244,7 +244,8 @@ func main() {
 				vx = mgl64.TransformCoordinate(vx, camera)
 				go computePixel(&img, i, j, origin, vx.Sub(origin), 0.005, R-1.0, R+1.0, &wg)
 				if (i*res+j)%(pix_step) == 0 {
-					fmt.Printf(".")
+					// fmt.Printf(".")
+					os.Stdout.Write([]byte("."))
 				}
 			}
 		}
