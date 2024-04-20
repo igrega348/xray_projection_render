@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"math"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -22,6 +23,7 @@ const fov = 45.0
 const R = 4.5
 const num_images = 256
 const flat_field = 0.0
+const NUM_JOBS = 16
 
 // func make_object() objects.Lattice {
 // 	var kelvin_uc = objects.MakeKelvin(0.075, 0.8)
@@ -189,6 +191,17 @@ type TransformParams struct {
 func main() {
 	defer timer()()
 	wrt := os.Stdout
+	job, err := strconv.Atoi(os.Getenv("NUM_MOD_DIV"))
+	if err != nil {
+		fmt.Println("Error converting job number to integer:", err)
+		job = 0
+	}
+	fmt.Println("Job:", job)
+	// create folder for output images
+	err = os.Mkdir(fmt.Sprintf("pics_%d", job), 0755)
+	if err != nil {
+		fmt.Println("Error creating directory:", err)
+	}
 
 	var img [res][res]float64
 
@@ -210,7 +223,10 @@ func main() {
 	t0 := time.Now()
 
 	for i_img := 0; i_img < num_images; i_img++ {
-		s = fmt.Sprintf("%3d/%3d [", i_img+1, num_images)
+		if i_img%NUM_JOBS != job {
+			continue
+		}
+		s = fmt.Sprintf("%3d/%3d [", i_img, num_images)
 		wrt.Write([]byte(s))
 
 		dth := 360.0 / num_images
@@ -286,7 +302,7 @@ func main() {
 			wrt.Write([]byte(s))
 		}
 		// Save to out.png
-		filename := fmt.Sprintf("pics/out%03d.png", i_img)
+		filename := fmt.Sprintf("pics_%d/out%03d.png", job, i_img)
 		out, err := os.Create(filename)
 		if err != nil {
 			panic(err)
@@ -300,7 +316,7 @@ func main() {
 	// fmt.Println("Min value:", min_val, "Max value:", max_val)
 
 	// Optionally, write JSON data to a file
-	file, err := os.Create("transforms.json")
+	file, err := os.Create(fmt.Sprintf("transforms_%d.json", job))
 	if err != nil {
 		fmt.Println("Error creating file:", err)
 		return
@@ -322,7 +338,7 @@ func main() {
 	if err != nil {
 		fmt.Println("Error marshalling to YAML:", err)
 	}
-	err = os.WriteFile("object.yaml", data, 0644)
+	err = os.WriteFile(fmt.Sprintf("object_%d.yaml", job), data, 0644)
 	if err != nil {
 		fmt.Println("Error writing YAML to file:", err)
 	}
