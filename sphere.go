@@ -18,10 +18,10 @@ import (
 	"github.com/igrega348/sphere_render/objects"
 )
 
-const res = 128
+const res = 2000
 const fov = 45.0
-const R = 5.0
-const num_images = 6
+const R = 4.5
+const num_images = 1
 const flat_field = 0.0
 
 // func make_object() objects.Lattice {
@@ -30,31 +30,31 @@ const flat_field = 0.0
 // 	return kelvin_uc
 // }
 
-func load_object() objects.Lattice {
-	fn := "lattice.yaml"
-	data, err := os.ReadFile(fn)
-	if err != nil {
-		fmt.Println("Error reading file:", err)
-	}
-	out := map[string]interface{}{}
-	err = yaml.Unmarshal(data, &out)
-	if err != nil {
-		fmt.Println("Error unmarshalling YAML to map", err)
-	}
-	lat := objects.Lattice{}
-	err = lat.FromYAML(out)
-	if err != nil {
-		fmt.Println("Error converting to lattice:", err)
-	}
-	if out["tessellate"] != nil {
-		nx := out["tessellate"].([]interface{})[0].(int)
-		ny := out["tessellate"].([]interface{})[1].(int)
-		nz := out["tessellate"].([]interface{})[2].(int)
-		lat = lat.Tesselate(nx, ny, nz)
-	}
-	fmt.Println("Lattice loaded")
-	return lat
-}
+// func load_object() objects.Lattice {
+// 	fn := "lattice.yaml"
+// 	data, err := os.ReadFile(fn)
+// 	if err != nil {
+// 		fmt.Println("Error reading file:", err)
+// 	}
+// 	out := map[string]interface{}{}
+// 	err = yaml.Unmarshal(data, &out)
+// 	if err != nil {
+// 		fmt.Println("Error unmarshalling YAML to map", err)
+// 	}
+// 	lat := objects.Lattice{}
+// 	err = lat.FromYAML(out)
+// 	if err != nil {
+// 		fmt.Println("Error converting to lattice:", err)
+// 	}
+// 	if out["tessellate"] != nil {
+// 		nx := out["tessellate"].([]interface{})[0].(int)
+// 		ny := out["tessellate"].([]interface{})[1].(int)
+// 		nz := out["tessellate"].([]interface{})[2].(int)
+// 		lat = lat.Tesselate(nx, ny, nz)
+// 	}
+// 	fmt.Println("Lattice loaded")
+// 	return lat
+// }
 
 // func load_object() objects.ObjectCollection {
 // 	fn := "pillars.yaml"
@@ -85,7 +85,16 @@ func load_object() objects.Lattice {
 // 	}
 // }
 
-var lat = load_object()
+func make_object() objects.Cylinder {
+	return objects.Cylinder{
+		P0:     mgl64.Vec3{0, 0, -1},
+		P1:     mgl64.Vec3{0, 0, 1},
+		Radius: 0.075 / 5,
+		Rho:    5.0,
+	}
+}
+
+var lat = make_object()
 
 func deform(x, y, z float64) (float64, float64, float64) {
 	// Try Gaussian displacement field
@@ -127,7 +136,7 @@ func integrate_hierarchical(origin, direction mgl64.Vec3, DS, smin, smax float64
 	// integrate using sliding window
 	right := smin + DS
 	left := smin
-	ds := DS / 25.0
+	ds := DS / 10.0
 	prev_rho := 0.0
 	T := flat_field
 	for right <= smax {
@@ -237,7 +246,7 @@ func main() {
 				wg.Add(1)
 				vx := mgl64.Vec3{float64(i)/(res/2) - 1, float64(j)/(res/2) - 1, -f}
 				vx = mgl64.TransformCoordinate(vx, camera)
-				go computePixel(&img, i, j, origin, vx.Sub(origin), 0.005, R-1.0, R+1.0, &wg)
+				go computePixel(&img, i, j, origin, vx.Sub(origin), 0.01, R-1.41, R+1.41, &wg)
 			}
 		}
 		wg.Wait()
