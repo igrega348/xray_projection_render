@@ -12,8 +12,6 @@ import (
 	"time"
 
 	"github.com/go-gl/mathgl/mgl64"
-	"github.com/vbauerster/mpb/v8"
-	"github.com/vbauerster/mpb/v8/decor"
 	"gopkg.in/yaml.v3"
 
 	"github.com/igrega348/sphere_render/objects"
@@ -197,28 +195,22 @@ func main() {
 		Frames:      []OneParam{},
 	}
 	min_val, max_val := 1.0, 0.0
-	// create a progress bar
-	p_container := mpb.New(mpb.WithRefreshRate(2 * time.Second))
-	bar := p_container.AddBar(int64(num_images),
-		mpb.PrependDecorators(decor.Name("Image "), decor.Counters(0, "%d/%d")),
-		mpb.AppendDecorators(decor.AverageETA(decor.ET_STYLE_MMSS)),
-	)
-	// bar := progressbar.Default(int64(num_images))
+
+	// Progress indicator
+	fmt.Println("Rendering images...")
+	fmt.Printf("%7s%53s%6s\n", "Image", "Progress", "ETA")
+	pix_step := res * res / 50
+	t0 := time.Now()
 
 	for i_img := 0; i_img < num_images; i_img++ {
-		bar2 := p_container.AddBar(int64(res*res),
-			mpb.PrependDecorators(decor.Name("Pixel "), decor.Percentage()),
-			mpb.AppendDecorators(decor.AverageETA(decor.ET_STYLE_MMSS)),
-			mpb.BarRemoveOnComplete(),
-		)
+		fmt.Printf("%3d/%3d [", i_img+1, num_images)
 
 		dth := 360.0 / num_images
 		var th, phi float64
 
 		th = float64(i_img) * dth
 		phi = math.Pi / 2.0
-		// bar.Add(1)
-		bar.Increment()
+
 		// zero out img
 		for i := 0; i < res; i++ {
 			for j := 0; j < res; j++ {
@@ -251,10 +243,16 @@ func main() {
 				vx := mgl64.Vec3{float64(i)/(res/2) - 1, float64(j)/(res/2) - 1, -f}
 				vx = mgl64.TransformCoordinate(vx, camera)
 				go computePixel(&img, i, j, origin, vx.Sub(origin), 0.005, R-1.0, R+1.0, &wg)
-				bar2.Increment()
+				if (i*res+j)%(pix_step) == 0 {
+					fmt.Printf(".")
+				}
 			}
 		}
 		wg.Wait()
+
+		// progress indicator
+		eta := time.Since(t0) * time.Duration(num_images-i_img-1) / time.Duration(i_img+1)
+		fmt.Printf("] %02d:%02d\n", int(eta.Minutes())%60, int(eta.Seconds())%60)
 
 		myImage := image.NewRGBA(image.Rect(0, 0, res, res))
 		for i := 0; i < res; i++ {
@@ -270,9 +268,9 @@ func main() {
 				}
 			}
 		}
-		// if i_img == 0 || i_img == num_images-1 {
-		// 	fmt.Println("Min value:", min_val, "Max value:", max_val)
-		// }
+		if i_img == 0 || i_img == num_images-1 {
+			fmt.Println("Min value:", min_val, "Max value:", max_val)
+		}
 		// Save to out.png
 		filename := fmt.Sprintf("pics/out%03d.png", i_img)
 		out, err := os.Create(filename)
@@ -283,13 +281,9 @@ func main() {
 		out.Close()
 
 		transform_params.Frames = append(transform_params.Frames, OneParam{FilePath: filename, TransformMatrix: rows})
-
-		if !bar2.Completed() {
-			bar2.Abort(true)
-		}
 	}
 
-	fmt.Println("Min value:", min_val, "Max value:", max_val)
+	// fmt.Println("Min value:", min_val, "Max value:", max_val)
 
 	// Optionally, write JSON data to a file
 	file, err := os.Create("transforms.json")
