@@ -13,44 +13,79 @@ import (
 
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/schollz/progressbar/v3"
+	"gopkg.in/yaml.v3"
 
-	"github.com/igrega348/sphere_render/lattices"
+	"github.com/igrega348/sphere_render/objects"
 )
 
-const res = 200
+const res = 128
 const fov = 45.0
-const R = 3.0
-const rad = 0.1
+const R = 5.0
 const num_images = 1
 const flat_field = 0.0
 
-func make_lattice() lattices.Lattice {
-	var kelvin_uc = lattices.MakeKelvin(rad)
-	var struts = kelvin_uc.Struts
-	nx := 4
-	ny := 4
-	nz := 4
-	scaler := 1.0 / float64(max(nx, ny, nz))
-	dx := mgl64.Vec3{1, 0, 0}
-	dy := mgl64.Vec3{0, 1, 0}
-	dz := mgl64.Vec3{0, 0, 1}
-	var tess = make([]lattices.Strut, nx*ny*nz*len(struts))
-	for i := 0; i < nx; i++ {
-		for j := 0; j < ny; j++ {
-			for k := 0; k < nz; k++ {
-				for i_s := 0; i_s < len(struts); i_s++ {
-					tess[(i*ny*nz+j*nz+k)*len(struts)+i_s] = lattices.Strut{
-						P0: struts[i_s].P0.Add(dx.Mul(float64(i)).Add(dy.Mul(float64(j)).Add(dz.Mul(float64(k))))).Mul(scaler).Sub(mgl64.Vec3{0.5, 0.5, 0.5}),
-						P1: struts[i_s].P1.Add(dx.Mul(float64(i)).Add(dy.Mul(float64(j)).Add(dz.Mul(float64(k))))).Mul(scaler).Sub(mgl64.Vec3{0.5, 0.5, 0.5}),
-						R:  struts[i_s].R * scaler}
-				}
-			}
-		}
+// func make_object() objects.Lattice {
+// 	var kelvin_uc = objects.MakeKelvin(0.075, 0.8)
+// 	// return kelvin_uc.Tesselate(4, 4, 4)
+// 	return kelvin_uc
+// }
+
+func load_object() objects.Lattice {
+	fn := "lattice.yaml"
+	data, err := os.ReadFile(fn)
+	if err != nil {
+		fmt.Println("Error reading file:", err)
 	}
-	return lattices.Lattice{Struts: tess}
+	out := map[string]interface{}{}
+	err = yaml.Unmarshal(data, &out)
+	if err != nil {
+		fmt.Println("Error unmarshalling YAML to map", err)
+	}
+	lat := objects.Lattice{}
+	err = lat.FromYAML(out)
+	if err != nil {
+		fmt.Println("Error converting to lattice:", err)
+	}
+	if out["tessellate"] != nil {
+		nx := out["tessellate"].([]interface{})[0].(int)
+		ny := out["tessellate"].([]interface{})[1].(int)
+		nz := out["tessellate"].([]interface{})[2].(int)
+		lat = lat.Tesselate(nx, ny, nz)
+	}
+	fmt.Println("Lattice loaded")
+	return lat
 }
 
-var lat = make_lattice()
+// func load_object() objects.ObjectCollection {
+// 	fn := "pillars.yaml"
+// 	data, err := os.ReadFile(fn)
+// 	if err != nil {
+// 		fmt.Println("Error reading file:", err)
+// 	}
+
+// 	out := map[string]interface{}{}
+// 	err = yaml.Unmarshal(data, &out)
+// 	if err != nil {
+// 		fmt.Println("Error unmarshalling YAML:", err)
+// 	}
+// 	balls := objects.ObjectCollection{}
+// 	err = balls.FromYAML(out)
+// 	if err != nil {
+// 		fmt.Println("Error converting to object collection:", err)
+// 	}
+// 	return balls
+// }
+
+// func make_object() objects.ObjectCollection {
+// 	return objects.ObjectCollection{
+// 		Objects: []objects.Object{
+// 			&objects.Cube{Center: mgl64.Vec3{0, 0, 0}, Side: 1.0, Rho: 1.0},
+// 			&objects.Sphere{Center: mgl64.Vec3{0, 0, 0}, Radius: 0.25, Rho: -1.0},
+// 		},
+// 	}
+// }
+
+var lat = load_object()
 
 func deform(x, y, z float64) (float64, float64, float64) {
 	// Try Gaussian displacement field
@@ -61,8 +96,15 @@ func deform(x, y, z float64) (float64, float64, float64) {
 }
 
 func density(x, y, z float64) float64 {
-	x, y, z = deform(x, y, z)
+	// x, y, z = deform(x, y, z)
+	// return lat.Density(x, y, z)
 	return lat.Density(x, y, z)
+	// r_2 := x*x + y*y + z*z // sphere centered at origin
+	// if r_2 < 0.25 {
+	// 	return 1.0
+	// } else {
+	// 	return 0.0
+	// }
 }
 
 func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) float64 {
@@ -79,31 +121,36 @@ func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) f
 	return math.Exp(-T)
 }
 
-func integrate_hierarchical(origin, direction mgl64.Vec3, ds, smin, smax float64) float64 {
+func integrate_hierarchical(origin, direction mgl64.Vec3, DS, smin, smax float64) float64 {
 	// normalize components of the ray
 	direction = direction.Normalize()
-	// integrate
-	T := 0.0
-	for s := smin; s <= smax; s += 9 * ds {
-		x := origin[0] + direction[0]*s
-		y := origin[1] + direction[1]*s
-		z := origin[2] + direction[2]*s
+	// integrate using sliding window
+	right := smin + DS
+	left := smin
+	ds := DS / 25.0
+	prev_rho := 0.0
+	T := flat_field
+	for right <= smax {
+		x := origin[0] + direction[0]*right
+		y := origin[1] + direction[1]*right
+		z := origin[2] + direction[2]*right
 		rho := density(x, y, z)
-		if rho > 0 {
-			T += rho * ds // central sample
-			for _s := s - 4*ds; _s < s; _s += ds {
-				x := origin[0] + direction[0]*_s
-				y := origin[1] + direction[1]*_s
-				z := origin[2] + direction[2]*_s
+		if (rho == 0) != (prev_rho == 0) { // rho changed between left and right
+			left += ds
+			for left < right {
+				x := origin[0] + direction[0]*left
+				y := origin[1] + direction[1]*left
+				z := origin[2] + direction[2]*left
 				T += density(x, y, z) * ds
+				left += ds
 			}
-			for _s := s + ds; _s <= s+4*ds; _s += ds {
-				x := origin[0] + direction[0]*_s
-				y := origin[1] + direction[1]*_s
-				z := origin[2] + direction[2]*_s
-				T += density(x, y, z) * ds
-			}
+			T += rho * ds // reuse rho from right
+		} else {
+			T += rho * DS
 		}
+		prev_rho = rho
+		left = right
+		right += DS
 	}
 	return math.Exp(-T)
 }
@@ -148,6 +195,7 @@ func main() {
 		CY:          res / 2.0,
 		Frames:      []OneParam{},
 	}
+	min_val, max_val := 1.0, 0.0
 	// create a progress bar
 	bar := progressbar.Default(int64(num_images))
 	for i_img := 0; i_img < num_images; i_img++ {
@@ -188,7 +236,7 @@ func main() {
 				wg.Add(1)
 				vx := mgl64.Vec3{float64(i)/(res/2) - 1, float64(j)/(res/2) - 1, -f}
 				vx = mgl64.TransformCoordinate(vx, camera)
-				go computePixel(&img, i, j, origin, vx.Sub(origin), 0.001, R-1.0, R+1.0, &wg)
+				go computePixel(&img, i, j, origin, vx.Sub(origin), 0.005, R-1.0, R+1.0, &wg)
 			}
 		}
 		wg.Wait()
@@ -199,10 +247,19 @@ func main() {
 				val := img[i][j]
 				c := color.RGBA64{uint16(val * 0xffff), uint16(val * 0xffff), uint16(val * 0xffff), 0xffff}
 				myImage.SetRGBA64(i, j, c)
+				if val < min_val {
+					min_val = val
+				}
+				if val > max_val {
+					max_val = val
+				}
 			}
 		}
+		if i_img == 0 || i_img == num_images-1 {
+			fmt.Println("Min value:", min_val, "Max value:", max_val)
+		}
 		// Save to out.png
-		filename := fmt.Sprintf("pics/out%d.png", i_img)
+		filename := fmt.Sprintf("pics/out%03d.png", i_img)
 		out, err := os.Create(filename)
 		if err != nil {
 			panic(err)
@@ -222,5 +279,22 @@ func main() {
 	defer file.Close()
 
 	jsonData, err := json.MarshalIndent(transform_params, "", "  ")
+	if err != nil {
+		fmt.Println("Error marshalling to JSON:", err)
+	}
 	_, err = file.Write(jsonData)
+
+	if err != nil {
+		fmt.Println("Error writing JSON to file:", err)
+	}
+
+	// write object to YAML
+	data, err := yaml.Marshal(lat.ToYAML())
+	if err != nil {
+		fmt.Println("Error marshalling to YAML:", err)
+	}
+	err = os.WriteFile("object.yaml", data, 0644)
+	if err != nil {
+		fmt.Println("Error writing YAML to file:", err)
+	}
 }

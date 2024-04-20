@@ -6,6 +6,7 @@ require (
 	github.com/go-gl/mathgl v1.1.0
 	github.com/pkg/profile v1.7.0
 	github.com/schollz/progressbar/v3 v3.14.2
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
