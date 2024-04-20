@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"math"
 	"os"
 	"sync"
@@ -20,7 +21,7 @@ import (
 const res = 128
 const fov = 45.0
 const R = 5.0
-const num_images = 6
+const num_images = 1
 const flat_field = 0.0
 
 // func make_object() objects.Lattice {
@@ -184,6 +185,18 @@ type TransformParams struct {
 
 func main() {
 	defer timer()()
+
+	fileName := fmt.Sprintf("job_%s.log", os.Getenv("JOB_ID"))
+	// open log file
+	logFile, err := os.OpenFile(fileName, os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		fmt.Println("Could not open file for logging")
+	}
+	defer logFile.Close()
+
+	// redirect all the output to file
+	wrt := io.MultiWriter(os.Stdout, logFile)
+
 	var img [res][res]float64
 
 	transform_params := TransformParams{
