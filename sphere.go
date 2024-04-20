@@ -198,7 +198,7 @@ func main() {
 	}
 	min_val, max_val := 1.0, 0.0
 	// create a progress bar
-	p_container := mpb.New()
+	p_container := mpb.New(mpb.WithRefreshRate(2 * time.Second))
 	bar := p_container.AddBar(int64(num_images),
 		mpb.PrependDecorators(decor.Name("Image "), decor.Counters(0, "%d/%d")),
 		mpb.AppendDecorators(decor.AverageETA(decor.ET_STYLE_MMSS)),
