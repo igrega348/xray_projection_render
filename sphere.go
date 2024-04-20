@@ -12,7 +12,8 @@ import (
 	"time"
 
 	"github.com/go-gl/mathgl/mgl64"
-	"github.com/schollz/progressbar/v3"
+	"github.com/vbauerster/mpb/v8"
+	"github.com/vbauerster/mpb/v8/decor"
 	"gopkg.in/yaml.v3"
 
 	"github.com/igrega348/sphere_render/objects"
@@ -21,7 +22,7 @@ import (
 const res = 128
 const fov = 45.0
 const R = 5.0
-const num_images = 1
+const num_images = 6
 const flat_field = 0.0
 
 // func make_object() objects.Lattice {
@@ -197,14 +198,27 @@ func main() {
 	}
 	min_val, max_val := 1.0, 0.0
 	// create a progress bar
-	bar := progressbar.Default(int64(num_images))
+	p_container := mpb.New()
+	bar := p_container.AddBar(int64(num_images),
+		mpb.PrependDecorators(decor.Name("Image "), decor.Counters(0, "%d/%d")),
+		mpb.AppendDecorators(decor.AverageETA(decor.ET_STYLE_MMSS)),
+	)
+	// bar := progressbar.Default(int64(num_images))
+
 	for i_img := 0; i_img < num_images; i_img++ {
+		bar2 := p_container.AddBar(int64(res*res),
+			mpb.PrependDecorators(decor.Name("Pixel "), decor.Percentage()),
+			mpb.AppendDecorators(decor.AverageETA(decor.ET_STYLE_MMSS)),
+			mpb.BarRemoveOnComplete(),
+		)
+
 		dth := 360.0 / num_images
 		var th, phi float64
 
 		th = float64(i_img) * dth
 		phi = math.Pi / 2.0
-		bar.Add(1)
+		// bar.Add(1)
+		bar.Increment()
 		// zero out img
 		for i := 0; i < res; i++ {
 			for j := 0; j < res; j++ {
@@ -237,6 +251,7 @@ func main() {
 				vx := mgl64.Vec3{float64(i)/(res/2) - 1, float64(j)/(res/2) - 1, -f}
 				vx = mgl64.TransformCoordinate(vx, camera)
 				go computePixel(&img, i, j, origin, vx.Sub(origin), 0.005, R-1.0, R+1.0, &wg)
+				bar2.Increment()
 			}
 		}
 		wg.Wait()
@@ -255,9 +270,9 @@ func main() {
 				}
 			}
 		}
-		if i_img == 0 || i_img == num_images-1 {
-			fmt.Println("Min value:", min_val, "Max value:", max_val)
-		}
+		// if i_img == 0 || i_img == num_images-1 {
+		// 	fmt.Println("Min value:", min_val, "Max value:", max_val)
+		// }
 		// Save to out.png
 		filename := fmt.Sprintf("pics/out%03d.png", i_img)
 		out, err := os.Create(filename)
@@ -268,7 +283,13 @@ func main() {
 		out.Close()
 
 		transform_params.Frames = append(transform_params.Frames, OneParam{FilePath: filename, TransformMatrix: rows})
+
+		if !bar2.Completed() {
+			bar2.Abort(true)
+		}
 	}
+
+	fmt.Println("Min value:", min_val, "Max value:", max_val)
 
 	// Optionally, write JSON data to a file
 	file, err := os.Create("transforms.json")
