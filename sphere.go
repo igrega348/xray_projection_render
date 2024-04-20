@@ -264,7 +264,7 @@ func main() {
 		// progress indicator
 		eta := time.Since(t0) * time.Duration(num_images-i_img-1) / time.Duration(i_img+1)
 		pix_per_sec := float64(res*res) / time.Since(t1).Seconds()
-		s = fmt.Sprintf("] %5.0f %02d:%02d\n", pix_per_sec, int(eta.Minutes())%60, int(eta.Seconds())%60)
+		s = fmt.Sprintf("] %5.0f %02d:%02d\n", pix_per_sec, int(eta.Minutes()), int(eta.Seconds())%60)
 		wrt.Write([]byte(s))
 
 		myImage := image.NewRGBA(image.Rect(0, 0, res, res))
