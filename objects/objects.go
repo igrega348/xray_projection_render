@@ -104,21 +104,33 @@ func (c *Cube) Density(x, y, z float64) float64 {
 	return 0.0
 }
 
+func ToVec(data *[]interface{}, vec *mgl64.Vec3) error {
+	for i, val := range *data {
+		switch t := val.(type) {
+		case int:
+			vec[i] = float64(t)
+		case float64:
+			vec[i] = t
+		}
+	}
+	return nil
+}
+
 type Cylinder struct {
 	Object
 	// cylinder is a line segment with thickness
 	P0, P1 mgl64.Vec3
-	R      float64
+	Radius float64
 	Rho    float64
 }
 
 func (c *Cylinder) ToYAML() map[string]interface{} {
 	return map[string]interface{}{
-		"type": "cylinder",
-		"p0":   c.P0,
-		"p1":   c.P1,
-		"r":    c.R,
-		"rho":  c.Rho,
+		"type":   "cylinder",
+		"p0":     c.P0,
+		"p1":     c.P1,
+		"radius": c.Radius,
+		"rho":    c.Rho,
 	}
 }
 
@@ -128,17 +140,19 @@ func (c *Cylinder) FromYAML(data map[string]interface{}) error {
 	if slice, ok = data["p0"].([]interface{}); !ok {
 		return fmt.Errorf("p0 is not a Vec3")
 	}
-	for i, val := range slice {
-		c.P0[i] = val.(float64)
+	err := ToVec(&slice, &c.P0)
+	if err != nil {
+		return err
 	}
 	if slice, ok = data["p1"].([]interface{}); !ok {
-		return fmt.Errorf("p1 is not a Vec3")
+		return fmt.Errorf("p0 is not a Vec3")
 	}
-	for i, val := range slice {
-		c.P1[i] = val.(float64)
+	err = ToVec(&slice, &c.P1)
+	if err != nil {
+		return err
 	}
-	if c.R, ok = data["r"].(float64); !ok {
-		return fmt.Errorf("r is not a float64")
+	if c.Radius, ok = data["radius"].(float64); !ok {
+		return fmt.Errorf("radius is not a float64")
 	}
 	if c.Rho, ok = data["rho"].(float64); !ok {
 		return fmt.Errorf("rho is not a float64")
@@ -157,7 +171,7 @@ func (cyl *Cylinder) Density(x, y, z float64) float64 {
 	}
 	// get the distance from the point to the line
 	d := w.Sub(v.Mul(c)).Len()
-	if d < cyl.R {
+	if d < cyl.Radius {
 		return cyl.Rho
 	} else {
 		return 0.0
@@ -251,11 +265,9 @@ func (l *Lattice) FromYAML(data map[string]interface{}) error {
 	if struts_data, ok := data["struts"].([]interface{}); ok {
 		struts = make([]Cylinder, len(struts_data))
 		for i, strut_data := range struts_data {
-			strut := Cylinder{}
-			if err := strut.FromYAML(strut_data.(map[string]interface{})); err != nil {
+			if err := struts[i].FromYAML(strut_data.(map[string]interface{})); err != nil {
 				return err
 			}
-			struts[i] = strut
 		}
 	} else {
 		return fmt.Errorf("struts is not a list")
@@ -278,7 +290,7 @@ func (l *Lattice) Density(x, y, z float64) float64 {
 		}
 		// get the distance from the point to the line
 		d := w.Sub(v.Mul(c)).Len()
-		if d < strut.R {
+		if d < strut.Radius {
 			return 1.0
 		}
 	}
@@ -290,6 +302,7 @@ func (lat *Lattice) Tesselate(nx, ny, nz int) Lattice {
 	dx := mgl64.Vec3{1, 0, 0}
 	dy := mgl64.Vec3{0, 1, 0}
 	dz := mgl64.Vec3{0, 0, 1}
+	sub := dx.Mul(float64(nx - 1)).Add(dy.Mul(float64(ny - 1))).Add(dz.Mul(float64(nz - 1))).Mul(0.5)
 	var tess = make([]Cylinder, nx*ny*nz*len(lat.Struts))
 	for i := 0; i < nx; i++ {
 		for j := 0; j < ny; j++ {
@@ -297,9 +310,9 @@ func (lat *Lattice) Tesselate(nx, ny, nz int) Lattice {
 				for i_s := 0; i_s < len(lat.Struts); i_s++ {
 					dr := dx.Mul(float64(i)).Add(dy.Mul(float64(j)).Add(dz.Mul(float64(k))))
 					tess[(i*ny*nz+j*nz+k)*len(lat.Struts)+i_s] = Cylinder{
-						P0: lat.Struts[i_s].P0.Add(dr).Mul(scaler).Sub(mgl64.Vec3{0.5, 0.5, 0.5}),
-						P1: lat.Struts[i_s].P1.Add(dr).Mul(scaler).Sub(mgl64.Vec3{0.5, 0.5, 0.5}),
-						R:  lat.Struts[i_s].R * scaler}
+						P0:     lat.Struts[i_s].P0.Add(dr).Sub(sub).Mul(scaler),
+						P1:     lat.Struts[i_s].P1.Add(dr).Sub(sub).Mul(scaler),
+						Radius: lat.Struts[i_s].Radius * scaler}
 				}
 			}
 		}
@@ -307,32 +320,37 @@ func (lat *Lattice) Tesselate(nx, ny, nz int) Lattice {
 	return Lattice{Struts: tess}
 }
 
-func MakeKelvin(rad float64) Lattice {
+func MakeKelvin(rad float64, scale float64) Lattice {
 	var struts = []Cylinder{
-		{P0: mgl64.Vec3{0.25, 0.00, 0.50}, P1: mgl64.Vec3{0.50, 0.00, 0.75}, R: rad},
-		{P0: mgl64.Vec3{0.25, 0.00, 0.50}, P1: mgl64.Vec3{0.50, 0.00, 0.25}, R: rad},
-		{P0: mgl64.Vec3{0.25, 0.00, 0.50}, P1: mgl64.Vec3{0.00, 0.25, 0.50}, R: rad},
-		{P0: mgl64.Vec3{0.50, 0.00, 0.75}, P1: mgl64.Vec3{0.75, 0.00, 0.50}, R: rad},
-		{P0: mgl64.Vec3{0.50, 0.00, 0.75}, P1: mgl64.Vec3{0.50, 0.25, 1.00}, R: rad},
-		{P0: mgl64.Vec3{0.75, 0.00, 0.50}, P1: mgl64.Vec3{0.50, 0.00, 0.25}, R: rad},
-		{P0: mgl64.Vec3{0.75, 0.00, 0.50}, P1: mgl64.Vec3{1.00, 0.25, 0.50}, R: rad},
-		{P0: mgl64.Vec3{0.50, 0.00, 0.25}, P1: mgl64.Vec3{0.50, 0.25, 0.00}, R: rad},
-		{P0: mgl64.Vec3{1.00, 0.50, 0.75}, P1: mgl64.Vec3{0.75, 0.50, 1.00}, R: rad},
-		{P0: mgl64.Vec3{1.00, 0.75, 0.50}, P1: mgl64.Vec3{0.75, 1.00, 0.50}, R: rad},
-		{P0: mgl64.Vec3{1.00, 0.50, 0.25}, P1: mgl64.Vec3{0.75, 0.50, 0.00}, R: rad},
-		{P0: mgl64.Vec3{0.25, 1.00, 0.50}, P1: mgl64.Vec3{0.00, 0.75, 0.50}, R: rad},
-		{P0: mgl64.Vec3{0.50, 1.00, 0.75}, P1: mgl64.Vec3{0.50, 0.75, 1.00}, R: rad},
-		{P0: mgl64.Vec3{0.50, 1.00, 0.25}, P1: mgl64.Vec3{0.50, 0.75, 0.00}, R: rad},
-		{P0: mgl64.Vec3{0.00, 0.25, 0.50}, P1: mgl64.Vec3{0.00, 0.50, 0.75}, R: rad},
-		{P0: mgl64.Vec3{0.00, 0.25, 0.50}, P1: mgl64.Vec3{0.00, 0.50, 0.25}, R: rad},
-		{P0: mgl64.Vec3{0.00, 0.50, 0.75}, P1: mgl64.Vec3{0.25, 0.50, 1.00}, R: rad},
-		{P0: mgl64.Vec3{0.00, 0.50, 0.75}, P1: mgl64.Vec3{0.00, 0.75, 0.50}, R: rad},
-		{P0: mgl64.Vec3{0.00, 0.75, 0.50}, P1: mgl64.Vec3{0.00, 0.50, 0.25}, R: rad},
-		{P0: mgl64.Vec3{0.00, 0.50, 0.25}, P1: mgl64.Vec3{0.25, 0.50, 0.00}, R: rad},
-		{P0: mgl64.Vec3{0.25, 0.50, 0.00}, P1: mgl64.Vec3{0.50, 0.75, 0.00}, R: rad},
-		{P0: mgl64.Vec3{0.25, 0.50, 0.00}, P1: mgl64.Vec3{0.50, 0.25, 0.00}, R: rad},
-		{P0: mgl64.Vec3{0.50, 0.75, 0.00}, P1: mgl64.Vec3{0.75, 0.50, 0.00}, R: rad},
-		{P0: mgl64.Vec3{0.75, 0.50, 0.00}, P1: mgl64.Vec3{0.50, 0.25, 0.00}, R: rad},
+		{P0: mgl64.Vec3{0.25, 0.00, 0.50}, P1: mgl64.Vec3{0.50, 0.00, 0.75}, Radius: rad},
+		{P0: mgl64.Vec3{0.25, 0.00, 0.50}, P1: mgl64.Vec3{0.50, 0.00, 0.25}, Radius: rad},
+		{P0: mgl64.Vec3{0.25, 0.00, 0.50}, P1: mgl64.Vec3{0.00, 0.25, 0.50}, Radius: rad},
+		{P0: mgl64.Vec3{0.50, 0.00, 0.75}, P1: mgl64.Vec3{0.75, 0.00, 0.50}, Radius: rad},
+		{P0: mgl64.Vec3{0.50, 0.00, 0.75}, P1: mgl64.Vec3{0.50, 0.25, 1.00}, Radius: rad},
+		{P0: mgl64.Vec3{0.75, 0.00, 0.50}, P1: mgl64.Vec3{0.50, 0.00, 0.25}, Radius: rad},
+		{P0: mgl64.Vec3{0.75, 0.00, 0.50}, P1: mgl64.Vec3{1.00, 0.25, 0.50}, Radius: rad},
+		{P0: mgl64.Vec3{0.50, 0.00, 0.25}, P1: mgl64.Vec3{0.50, 0.25, 0.00}, Radius: rad},
+		{P0: mgl64.Vec3{1.00, 0.50, 0.75}, P1: mgl64.Vec3{0.75, 0.50, 1.00}, Radius: rad},
+		{P0: mgl64.Vec3{1.00, 0.75, 0.50}, P1: mgl64.Vec3{0.75, 1.00, 0.50}, Radius: rad},
+		{P0: mgl64.Vec3{1.00, 0.50, 0.25}, P1: mgl64.Vec3{0.75, 0.50, 0.00}, Radius: rad},
+		{P0: mgl64.Vec3{0.25, 1.00, 0.50}, P1: mgl64.Vec3{0.00, 0.75, 0.50}, Radius: rad},
+		{P0: mgl64.Vec3{0.50, 1.00, 0.75}, P1: mgl64.Vec3{0.50, 0.75, 1.00}, Radius: rad},
+		{P0: mgl64.Vec3{0.50, 1.00, 0.25}, P1: mgl64.Vec3{0.50, 0.75, 0.00}, Radius: rad},
+		{P0: mgl64.Vec3{0.00, 0.25, 0.50}, P1: mgl64.Vec3{0.00, 0.50, 0.75}, Radius: rad},
+		{P0: mgl64.Vec3{0.00, 0.25, 0.50}, P1: mgl64.Vec3{0.00, 0.50, 0.25}, Radius: rad},
+		{P0: mgl64.Vec3{0.00, 0.50, 0.75}, P1: mgl64.Vec3{0.25, 0.50, 1.00}, Radius: rad},
+		{P0: mgl64.Vec3{0.00, 0.50, 0.75}, P1: mgl64.Vec3{0.00, 0.75, 0.50}, Radius: rad},
+		{P0: mgl64.Vec3{0.00, 0.75, 0.50}, P1: mgl64.Vec3{0.00, 0.50, 0.25}, Radius: rad},
+		{P0: mgl64.Vec3{0.00, 0.50, 0.25}, P1: mgl64.Vec3{0.25, 0.50, 0.00}, Radius: rad},
+		{P0: mgl64.Vec3{0.25, 0.50, 0.00}, P1: mgl64.Vec3{0.50, 0.75, 0.00}, Radius: rad},
+		{P0: mgl64.Vec3{0.25, 0.50, 0.00}, P1: mgl64.Vec3{0.50, 0.25, 0.00}, Radius: rad},
+		{P0: mgl64.Vec3{0.50, 0.75, 0.00}, P1: mgl64.Vec3{0.75, 0.50, 0.00}, Radius: rad},
+		{P0: mgl64.Vec3{0.75, 0.50, 0.00}, P1: mgl64.Vec3{0.50, 0.25, 0.00}, Radius: rad},
+	}
+	// center at 0 and scale
+	for i := range struts {
+		struts[i].P0 = struts[i].P0.Sub(mgl64.Vec3{0.5, 0.5, 0.5}).Mul(2.0 * scale)
+		struts[i].P1 = struts[i].P1.Sub(mgl64.Vec3{0.5, 0.5, 0.5}).Mul(2.0 * scale)
 	}
 	return Lattice{Struts: struts}
 }
@@ -340,12 +358,12 @@ func MakeKelvin(rad float64) Lattice {
 func MakeOctet(rad float64) Lattice {
 	s2 := math.Sqrt(2)
 	var struts = []Cylinder{
-		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0.5, 0.5, -1 / s2}, R: rad},
-		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{1, 0, 0}, R: rad},
-		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0.5, -0.5, -1 / s2}, R: rad},
-		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0, 1, 0}, R: rad},
-		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{-0.5, 0.5, -1 / s2}, R: rad},
-		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0.5, 0.5, 1 / s2}, R: rad},
+		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0.5, 0.5, -1 / s2}, Radius: rad},
+		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{1, 0, 0}, Radius: rad},
+		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0.5, -0.5, -1 / s2}, Radius: rad},
+		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0, 1, 0}, Radius: rad},
+		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{-0.5, 0.5, -1 / s2}, Radius: rad},
+		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0.5, 0.5, 1 / s2}, Radius: rad},
 	}
 	return Lattice{Struts: struts}
 }
