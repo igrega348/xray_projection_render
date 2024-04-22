@@ -12,16 +12,15 @@ import (
 	"time"
 
 	"github.com/go-gl/mathgl/mgl64"
+	"github.com/igrega348/sphere_render/objects"
 	"github.com/schollz/progressbar/v3"
 	"gopkg.in/yaml.v3"
-
-	"github.com/igrega348/sphere_render/objects"
 )
 
 const res = 2000
 const fov = 45.0
-const R = 4.5
-const num_images = 1
+const R = 5.0
+const num_images = 25
 const flat_field = 0.0
 
 // func make_object() objects.Lattice {
@@ -56,25 +55,24 @@ const flat_field = 0.0
 // 	return lat
 // }
 
-// func load_object() objects.ObjectCollection {
-// 	fn := "pillars.yaml"
-// 	data, err := os.ReadFile(fn)
-// 	if err != nil {
-// 		fmt.Println("Error reading file:", err)
-// 	}
-
-// 	out := map[string]interface{}{}
-// 	err = yaml.Unmarshal(data, &out)
-// 	if err != nil {
-// 		fmt.Println("Error unmarshalling YAML:", err)
-// 	}
-// 	balls := objects.ObjectCollection{}
-// 	err = balls.FromYAML(out)
-// 	if err != nil {
-// 		fmt.Println("Error converting to object collection:", err)
-// 	}
-// 	return balls
-// }
+func load_object() objects.ObjectCollection {
+	fn := "cube.yaml"
+	data, err := os.ReadFile(fn)
+	if err != nil {
+		fmt.Println("Error reading file:", err)
+	}
+	out := map[string]interface{}{}
+	err = yaml.Unmarshal(data, &out)
+	if err != nil {
+		fmt.Println("Error unmarshalling YAML:", err)
+	}
+	objcoll := objects.ObjectCollection{}
+	err = objcoll.FromYAML(out)
+	if err != nil {
+		fmt.Println("Error converting to object collection:", err)
+	}
+	return objcoll
+}
 
 // func make_object() objects.ObjectCollection {
 // 	return objects.ObjectCollection{
@@ -85,16 +83,15 @@ const flat_field = 0.0
 // 	}
 // }
 
-func make_object() objects.Cylinder {
-	return objects.Cylinder{
-		P0:     mgl64.Vec3{0, 0, -1},
-		P1:     mgl64.Vec3{0, 0, 1},
-		Radius: 0.075 / 5,
-		Rho:    5.0,
-	}
-}
+// func make_object() objects.Sphere {
+// 	return objects.Sphere{
+// 		Center: mgl64.Vec3{-1, 0, 0},
+// 		Radius: 0.5,
+// 		Rho:    1.0,
+// 	}
+// }
 
-var lat = make_object()
+var lat = load_object()
 
 func deform(x, y, z float64) (float64, float64, float64) {
 	// Try Gaussian displacement field
@@ -133,6 +130,13 @@ func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) f
 func integrate_hierarchical(origin, direction mgl64.Vec3, DS, smin, smax float64) float64 {
 	// normalize components of the ray
 	direction = direction.Normalize()
+	// check clipping
+	if density(origin[0]+direction[0]*smin, origin[1]+direction[1]*smin, origin[2]+direction[2]*smin) > 0 {
+		fmt.Println("Clipping at smin detected")
+	}
+	if density(origin[0]+direction[0]*smax, origin[1]+direction[1]*smax, origin[2]+direction[2]*smax) > 0 {
+		fmt.Println("Clipping at smax detected")
+	}
 	// integrate using sliding window
 	right := smin + DS
 	left := smin
@@ -214,6 +218,9 @@ func main() {
 
 		th = float64(i_img) * dth
 		phi = math.Pi / 2.0
+		// phi random
+		// z := rand.Float64()*2 - 1
+		// phi = math.Acos(z)
 		bar.Add(1)
 		// zero out img
 		for i := 0; i < res; i++ {
@@ -222,10 +229,10 @@ func main() {
 			}
 		}
 
-		origin := mgl64.Vec3{R * math.Cos(mgl64.DegToRad(float64(th))) * math.Sin(phi), R * math.Sin(mgl64.DegToRad(float64(th))) * math.Sin(phi), math.Cos(phi) * R}
+		eye := mgl64.Vec3{R * math.Cos(mgl64.DegToRad(float64(th))) * math.Sin(phi), R * math.Sin(mgl64.DegToRad(float64(th))) * math.Sin(phi), math.Cos(phi) * R}
 		center := mgl64.Vec3{0, 0, 0}
 		up := mgl64.Vec3{0, 0, 1}
-		camera := mgl64.LookAtV(origin, center, up)
+		camera := mgl64.LookAtV(eye, center, up)
 		// try to use the matrix to transform coordinates from camera space to world space
 		camera = camera.Inv()
 
@@ -246,7 +253,7 @@ func main() {
 				wg.Add(1)
 				vx := mgl64.Vec3{float64(i)/(res/2) - 1, float64(j)/(res/2) - 1, -f}
 				vx = mgl64.TransformCoordinate(vx, camera)
-				go computePixel(&img, i, j, origin, vx.Sub(origin), 0.01, R-1.41, R+1.41, &wg)
+				go computePixel(&img, i, j, eye, vx.Sub(eye), 0.01, R-1.41, R+1.41, &wg)
 			}
 		}
 		wg.Wait()
@@ -256,7 +263,8 @@ func main() {
 			for j := 0; j < res; j++ {
 				val := img[i][j]
 				c := color.RGBA64{uint16(val * 0xffff), uint16(val * 0xffff), uint16(val * 0xffff), 0xffff}
-				myImage.SetRGBA64(i, j, c)
+				// image has origin at top left, so we need to flip the y coordinate
+				myImage.SetRGBA64(i, res-j, c)
 				if val < min_val {
 					min_val = val
 				}
@@ -269,7 +277,7 @@ func main() {
 			fmt.Println("Min value:", min_val, "Max value:", max_val)
 		}
 		// Save to out.png
-		filename := fmt.Sprintf("pics/out%03d.png", i_img)
+		filename := fmt.Sprintf("pics/eval_%03d.png", i_img)
 		out, err := os.Create(filename)
 		if err != nil {
 			panic(err)
