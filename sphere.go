@@ -20,7 +20,7 @@ import (
 const res = 2000
 const fov = 45.0
 const R = 5.0
-const num_images = 25
+const num_images = 1
 const flat_field = 0.0
 
 // func make_object() objects.Lattice {
@@ -41,7 +41,7 @@ const flat_field = 0.0
 // 		fmt.Println("Error unmarshalling YAML to map", err)
 // 	}
 // 	lat := objects.Lattice{}
-// 	err = lat.FromYAML(out)
+// 	err = lat.FromMap(out)
 // 	if err != nil {
 // 		fmt.Println("Error converting to lattice:", err)
 // 	}
@@ -55,19 +55,29 @@ const flat_field = 0.0
 // 	return lat
 // }
 
-func load_object() objects.ObjectCollection {
-	fn := "cube.yaml"
+func load_object(fn string) objects.ObjectCollection {
 	data, err := os.ReadFile(fn)
 	if err != nil {
 		fmt.Println("Error reading file:", err)
 	}
 	out := map[string]interface{}{}
-	err = yaml.Unmarshal(data, &out)
-	if err != nil {
-		fmt.Println("Error unmarshalling YAML:", err)
+	// can have either yaml or json based on file extension via switch
+	switch ext := fn[len(fn)-4:]; ext {
+	case "yaml":
+		err = yaml.Unmarshal(data, &out)
+		if err != nil {
+			fmt.Println("Error unmarshalling YAML:", err)
+		}
+	case "json":
+		err = json.Unmarshal(data, &out)
+		if err != nil {
+			fmt.Println("Error unmarshalling JSON:", err)
+		}
+	default:
+		fmt.Println("Unknown file extension:", ext)
 	}
 	objcoll := objects.ObjectCollection{}
-	err = objcoll.FromYAML(out)
+	err = objcoll.FromMap(out)
 	if err != nil {
 		fmt.Println("Error converting to object collection:", err)
 	}
@@ -91,7 +101,7 @@ func load_object() objects.ObjectCollection {
 // 	}
 // }
 
-var lat = load_object()
+var lat = load_object("balls.yaml")
 
 func deform(x, y, z float64) (float64, float64, float64) {
 	// Try Gaussian displacement field
@@ -288,31 +298,24 @@ func main() {
 		transform_params.Frames = append(transform_params.Frames, OneParam{FilePath: filename, TransformMatrix: rows})
 	}
 
-	// Optionally, write JSON data to a file
-	file, err := os.Create("transforms.json")
-	if err != nil {
-		fmt.Println("Error creating file:", err)
-		return
-	}
-	defer file.Close()
-
+	// write transform parameters to JSON
 	jsonData, err := json.MarshalIndent(transform_params, "", "  ")
 	if err != nil {
 		fmt.Println("Error marshalling to JSON:", err)
 	}
-	_, err = file.Write(jsonData)
-
+	err = os.WriteFile("transforms.json", jsonData, 0644)
 	if err != nil {
 		fmt.Println("Error writing JSON to file:", err)
 	}
 
-	// write object to YAML
-	data, err := yaml.Marshal(lat.ToYAML())
+	// write object to JSON or YAML
+	data, err := json.MarshalIndent(lat.ToMap(), "", "  ")
+	// data, err = yaml.Marshal(lat.ToMap())
 	if err != nil {
-		fmt.Println("Error marshalling to YAML:", err)
+		fmt.Println("Error marshalling object:", err)
 	}
-	err = os.WriteFile("object.yaml", data, 0644)
+	err = os.WriteFile("object.json", data, 0644)
 	if err != nil {
-		fmt.Println("Error writing YAML to file:", err)
+		fmt.Println("Error writing file:", err)
 	}
 }

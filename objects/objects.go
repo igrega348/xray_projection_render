@@ -9,8 +9,8 @@ import (
 
 type Object interface {
 	Density(x, y, z float64) float64
-	ToYAML() map[string]interface{}
-	FromYAML(data map[string]interface{}) error
+	ToMap() map[string]interface{}
+	FromMap(data map[string]interface{}) error
 }
 
 type Sphere struct {
@@ -21,7 +21,7 @@ type Sphere struct {
 	Rho    float64
 }
 
-func (s *Sphere) ToYAML() map[string]interface{} {
+func (s *Sphere) ToMap() map[string]interface{} {
 	return map[string]interface{}{
 		"type":   "sphere",
 		"center": s.Center,
@@ -30,7 +30,7 @@ func (s *Sphere) ToYAML() map[string]interface{} {
 	}
 }
 
-func (s *Sphere) FromYAML(data map[string]interface{}) error {
+func (s *Sphere) FromMap(data map[string]interface{}) error {
 	var ok bool
 	var slice []interface{}
 	if slice, ok = data["center"].([]interface{}); !ok {
@@ -67,7 +67,7 @@ type Cube struct {
 	Rho    float64
 }
 
-func (c *Cube) ToYAML() map[string]interface{} {
+func (c *Cube) ToMap() map[string]interface{} {
 	return map[string]interface{}{
 		"type":   "cube",
 		"center": c.Center,
@@ -76,7 +76,7 @@ func (c *Cube) ToYAML() map[string]interface{} {
 	}
 }
 
-func (c *Cube) FromYAML(data map[string]interface{}) error {
+func (c *Cube) FromMap(data map[string]interface{}) error {
 	var ok bool
 	var slice []interface{}
 	if slice, ok = data["center"].([]interface{}); !ok {
@@ -124,7 +124,7 @@ type Cylinder struct {
 	Rho    float64
 }
 
-func (c *Cylinder) ToYAML() map[string]interface{} {
+func (c *Cylinder) ToMap() map[string]interface{} {
 	return map[string]interface{}{
 		"type":   "cylinder",
 		"p0":     c.P0,
@@ -134,7 +134,7 @@ func (c *Cylinder) ToYAML() map[string]interface{} {
 	}
 }
 
-func (c *Cylinder) FromYAML(data map[string]interface{}) error {
+func (c *Cylinder) FromMap(data map[string]interface{}) error {
 	var ok bool
 	var slice []interface{}
 	if slice, ok = data["p0"].([]interface{}); !ok {
@@ -182,10 +182,10 @@ type ObjectCollection struct {
 	Objects []Object
 }
 
-func (oc *ObjectCollection) ToYAML() map[string]interface{} {
+func (oc *ObjectCollection) ToMap() map[string]interface{} {
 	var objects = make([]map[string]interface{}, len(oc.Objects))
 	for i, object := range oc.Objects {
-		objects[i] = object.ToYAML()
+		objects[i] = object.ToMap()
 	}
 	return map[string]interface{}{
 		"type":    "object_collection",
@@ -193,7 +193,7 @@ func (oc *ObjectCollection) ToYAML() map[string]interface{} {
 	}
 }
 
-func (oc *ObjectCollection) FromYAML(data map[string]interface{}) error {
+func (oc *ObjectCollection) FromMap(data map[string]interface{}) error {
 	var objects []Object
 	if objects_data, ok := data["objects"].([]interface{}); ok {
 		objects = make([]Object, len(objects_data))
@@ -201,19 +201,19 @@ func (oc *ObjectCollection) FromYAML(data map[string]interface{}) error {
 			switch object_data.(map[string]interface{})["type"] {
 			case "sphere":
 				object := Sphere{}
-				if err := object.FromYAML(object_data.(map[string]interface{})); err != nil {
+				if err := object.FromMap(object_data.(map[string]interface{})); err != nil {
 					return err
 				}
 				objects[i] = &object
 			case "cube":
 				object := Cube{}
-				if err := object.FromYAML(object_data.(map[string]interface{})); err != nil {
+				if err := object.FromMap(object_data.(map[string]interface{})); err != nil {
 					return err
 				}
 				objects[i] = &object
 			case "cylinder":
 				object := Cylinder{}
-				if err := object.FromYAML(object_data.(map[string]interface{})); err != nil {
+				if err := object.FromMap(object_data.(map[string]interface{})); err != nil {
 					return err
 				}
 				objects[i] = &object
@@ -249,10 +249,10 @@ type Lattice struct {
 	Struts []Cylinder
 }
 
-func (l *Lattice) ToYAML() map[string]interface{} {
+func (l *Lattice) ToMap() map[string]interface{} {
 	var struts = make([]map[string]interface{}, len(l.Struts))
 	for i, strut := range l.Struts {
-		struts[i] = strut.ToYAML()
+		struts[i] = strut.ToMap()
 	}
 	return map[string]interface{}{
 		"type":   "lattice",
@@ -260,12 +260,12 @@ func (l *Lattice) ToYAML() map[string]interface{} {
 	}
 }
 
-func (l *Lattice) FromYAML(data map[string]interface{}) error {
+func (l *Lattice) FromMap(data map[string]interface{}) error {
 	var struts []Cylinder
 	if struts_data, ok := data["struts"].([]interface{}); ok {
 		struts = make([]Cylinder, len(struts_data))
 		for i, strut_data := range struts_data {
-			if err := struts[i].FromYAML(strut_data.(map[string]interface{})); err != nil {
+			if err := struts[i].FromMap(strut_data.(map[string]interface{})); err != nil {
 				return err
 			}
 		}
