@@ -17,7 +17,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const res = 2000
+const res = 1000
 const fov = 45.0
 const R = 5.0
 const num_images = 1
@@ -101,7 +101,14 @@ func load_object(fn string) objects.ObjectCollection {
 // 	}
 // }
 
-var lat = load_object("balls.yaml")
+func make_object() objects.Lattice {
+	uc := objects.MakeKelvin(0.03, 0.5)
+	lat := objects.Lattice{UC: uc, Xmin: -1.0, Xmax: 1.0, Ymin: -1.0, Ymax: 1.0, Zmin: -1.0, Zmax: 1.0}
+	return lat
+}
+
+// var lat = load_object("balls.yaml")
+var lat = make_object()
 
 func deform(x, y, z float64) (float64, float64, float64) {
 	// Try Gaussian displacement field

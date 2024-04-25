@@ -242,128 +242,200 @@ func (oc *ObjectCollection) Density(x, y, z float64) float64 {
 	return density
 }
 
-type Lattice struct {
-	// lattice is a collection of struts
-	// It's good to have a separate class for lattice because
-	// if we don't allow negative volumes, we can have faster iteration
-	Struts []Cylinder
+type UnitCell struct {
+	// object collection. But overload density method and provide bounds
+	Struts                             ObjectCollection
+	Xmin, Xmax, Ymin, Ymax, Zmin, Zmax float64
 }
 
-func (l *Lattice) ToMap() map[string]interface{} {
-	var struts = make([]map[string]interface{}, len(l.Struts))
-	for i, strut := range l.Struts {
-		struts[i] = strut.ToMap()
+func (uc *UnitCell) Density(x, y, z float64) float64 {
+	// check if point is within bounds. But account for struts a bit smaller
+	if x < uc.Xmin || x > uc.Xmax || y < uc.Ymin || y > uc.Ymax || z < uc.Zmin || z > uc.Zmax {
+		return 0.0
 	}
-	return map[string]interface{}{
-		"type":   "lattice",
-		"struts": struts,
-	}
-}
-
-func (l *Lattice) FromMap(data map[string]interface{}) error {
-	var struts []Cylinder
-	if struts_data, ok := data["struts"].([]interface{}); ok {
-		struts = make([]Cylinder, len(struts_data))
-		for i, strut_data := range struts_data {
-			if err := struts[i].FromMap(strut_data.(map[string]interface{})); err != nil {
-				return err
-			}
-		}
-	} else {
-		return fmt.Errorf("struts is not a list")
-	}
-	l.Struts = struts
-	return nil
-}
-
-func (l *Lattice) Density(x, y, z float64) float64 {
-	// for each point, iterate through struts and check if point is
-	// within the strut. If so, return 1.0 (density), otherwise 0.0
-	for _, strut := range l.Struts {
-		// get the vector from the point to the line
-		v := strut.P1.Sub(strut.P0)
-		w := mgl64.Vec3{x, y, z}.Sub(strut.P0)
-		// get the projection of w onto v
-		c := w.Dot(v) / v.Dot(v)
-		if c < 0.0 || c > 1.0 { // point is definitely not on the line
+	for _, strut := range uc.Struts.Objects {
+		rho := strut.Density(x, y, z)
+		if rho > 0.0 {
+			return rho
+		} else {
 			continue
-		}
-		// get the distance from the point to the line
-		d := w.Sub(v.Mul(c)).Len()
-		if d < strut.Radius {
-			return 1.0
 		}
 	}
 	return 0.0
 }
 
-func (lat *Lattice) Tesselate(nx, ny, nz int) Lattice {
-	scaler := 1.0 / float64(max(nx, ny, nz))
-	dx := mgl64.Vec3{1, 0, 0}
-	dy := mgl64.Vec3{0, 1, 0}
-	dz := mgl64.Vec3{0, 0, 1}
-	sub := dx.Mul(float64(nx - 1)).Add(dy.Mul(float64(ny - 1))).Add(dz.Mul(float64(nz - 1))).Mul(0.5)
-	var tess = make([]Cylinder, nx*ny*nz*len(lat.Struts))
-	for i := 0; i < nx; i++ {
-		for j := 0; j < ny; j++ {
-			for k := 0; k < nz; k++ {
-				for i_s := 0; i_s < len(lat.Struts); i_s++ {
-					dr := dx.Mul(float64(i)).Add(dy.Mul(float64(j)).Add(dz.Mul(float64(k))))
-					tess[(i*ny*nz+j*nz+k)*len(lat.Struts)+i_s] = Cylinder{
-						P0:     lat.Struts[i_s].P0.Add(dr).Sub(sub).Mul(scaler),
-						P1:     lat.Struts[i_s].P1.Add(dr).Sub(sub).Mul(scaler),
-						Radius: lat.Struts[i_s].Radius * scaler}
-				}
-			}
+func (uc *UnitCell) ToMap() map[string]interface{} {
+	return map[string]interface{}{
+		"type":   "unit_cell",
+		"struts": uc.Struts.ToMap(),
+		"xmin":   uc.Xmin,
+		"xmax":   uc.Xmax,
+		"ymin":   uc.Ymin,
+		"ymax":   uc.Ymax,
+		"zmin":   uc.Zmin,
+		"zmax":   uc.Zmax,
+	}
+}
+
+func (uc *UnitCell) FromMap(data map[string]interface{}) error {
+	var ok bool
+	if struts_data, ok := data["struts"].(map[string]interface{}); ok {
+		struts := ObjectCollection{}
+		if err := struts.FromMap(struts_data); err != nil {
+			return err
 		}
+		uc.Struts = struts
+	} else {
+		return fmt.Errorf("struts is not a map")
 	}
-	return Lattice{Struts: tess}
+	if uc.Xmin, ok = data["xmin"].(float64); !ok {
+		return fmt.Errorf("xmin is not a float64")
+	}
+	if uc.Xmax, ok = data["xmax"].(float64); !ok {
+		return fmt.Errorf("xmax is not a float64")
+	}
+	if uc.Ymin, ok = data["ymin"].(float64); !ok {
+		return fmt.Errorf("ymin is not a float64")
+	}
+	if uc.Ymax, ok = data["ymax"].(float64); !ok {
+		return fmt.Errorf("ymax is not a float64")
+	}
+	if uc.Zmin, ok = data["zmin"].(float64); !ok {
+		return fmt.Errorf("zmin is not a float64")
+	}
+	if uc.Zmax, ok = data["zmax"].(float64); !ok {
+		return fmt.Errorf("zmax is not a float64")
+	}
+	return nil
 }
 
-func MakeKelvin(rad float64, scale float64) Lattice {
-	var struts = []Cylinder{
-		{P0: mgl64.Vec3{0.25, 0.00, 0.50}, P1: mgl64.Vec3{0.50, 0.00, 0.75}, Radius: rad},
-		{P0: mgl64.Vec3{0.25, 0.00, 0.50}, P1: mgl64.Vec3{0.50, 0.00, 0.25}, Radius: rad},
-		{P0: mgl64.Vec3{0.25, 0.00, 0.50}, P1: mgl64.Vec3{0.00, 0.25, 0.50}, Radius: rad},
-		{P0: mgl64.Vec3{0.50, 0.00, 0.75}, P1: mgl64.Vec3{0.75, 0.00, 0.50}, Radius: rad},
-		{P0: mgl64.Vec3{0.50, 0.00, 0.75}, P1: mgl64.Vec3{0.50, 0.25, 1.00}, Radius: rad},
-		{P0: mgl64.Vec3{0.75, 0.00, 0.50}, P1: mgl64.Vec3{0.50, 0.00, 0.25}, Radius: rad},
-		{P0: mgl64.Vec3{0.75, 0.00, 0.50}, P1: mgl64.Vec3{1.00, 0.25, 0.50}, Radius: rad},
-		{P0: mgl64.Vec3{0.50, 0.00, 0.25}, P1: mgl64.Vec3{0.50, 0.25, 0.00}, Radius: rad},
-		{P0: mgl64.Vec3{1.00, 0.50, 0.75}, P1: mgl64.Vec3{0.75, 0.50, 1.00}, Radius: rad},
-		{P0: mgl64.Vec3{1.00, 0.75, 0.50}, P1: mgl64.Vec3{0.75, 1.00, 0.50}, Radius: rad},
-		{P0: mgl64.Vec3{1.00, 0.50, 0.25}, P1: mgl64.Vec3{0.75, 0.50, 0.00}, Radius: rad},
-		{P0: mgl64.Vec3{0.25, 1.00, 0.50}, P1: mgl64.Vec3{0.00, 0.75, 0.50}, Radius: rad},
-		{P0: mgl64.Vec3{0.50, 1.00, 0.75}, P1: mgl64.Vec3{0.50, 0.75, 1.00}, Radius: rad},
-		{P0: mgl64.Vec3{0.50, 1.00, 0.25}, P1: mgl64.Vec3{0.50, 0.75, 0.00}, Radius: rad},
-		{P0: mgl64.Vec3{0.00, 0.25, 0.50}, P1: mgl64.Vec3{0.00, 0.50, 0.75}, Radius: rad},
-		{P0: mgl64.Vec3{0.00, 0.25, 0.50}, P1: mgl64.Vec3{0.00, 0.50, 0.25}, Radius: rad},
-		{P0: mgl64.Vec3{0.00, 0.50, 0.75}, P1: mgl64.Vec3{0.25, 0.50, 1.00}, Radius: rad},
-		{P0: mgl64.Vec3{0.00, 0.50, 0.75}, P1: mgl64.Vec3{0.00, 0.75, 0.50}, Radius: rad},
-		{P0: mgl64.Vec3{0.00, 0.75, 0.50}, P1: mgl64.Vec3{0.00, 0.50, 0.25}, Radius: rad},
-		{P0: mgl64.Vec3{0.00, 0.50, 0.25}, P1: mgl64.Vec3{0.25, 0.50, 0.00}, Radius: rad},
-		{P0: mgl64.Vec3{0.25, 0.50, 0.00}, P1: mgl64.Vec3{0.50, 0.75, 0.00}, Radius: rad},
-		{P0: mgl64.Vec3{0.25, 0.50, 0.00}, P1: mgl64.Vec3{0.50, 0.25, 0.00}, Radius: rad},
-		{P0: mgl64.Vec3{0.50, 0.75, 0.00}, P1: mgl64.Vec3{0.75, 0.50, 0.00}, Radius: rad},
-		{P0: mgl64.Vec3{0.75, 0.50, 0.00}, P1: mgl64.Vec3{0.50, 0.25, 0.00}, Radius: rad},
-	}
-	// center at 0 and scale
-	for i := range struts {
-		struts[i].P0 = struts[i].P0.Sub(mgl64.Vec3{0.5, 0.5, 0.5}).Mul(2.0 * scale)
-		struts[i].P1 = struts[i].P1.Sub(mgl64.Vec3{0.5, 0.5, 0.5}).Mul(2.0 * scale)
-	}
-	return Lattice{Struts: struts}
+type Lattice struct {
+	// lattice is given by unit cell and bounds for tessellation
+	UC                                 UnitCell
+	Xmin, Xmax, Ymin, Ymax, Zmin, Zmax float64
 }
 
-func MakeOctet(rad float64) Lattice {
-	s2 := math.Sqrt(2)
-	var struts = []Cylinder{
-		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0.5, 0.5, -1 / s2}, Radius: rad},
-		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{1, 0, 0}, Radius: rad},
-		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0.5, -0.5, -1 / s2}, Radius: rad},
-		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0, 1, 0}, Radius: rad},
-		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{-0.5, 0.5, -1 / s2}, Radius: rad},
-		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0.5, 0.5, 1 / s2}, Radius: rad},
+func (l *Lattice) ToMap() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "lattice",
+		"uc":   l.UC.ToMap(),
+		"xmin": l.Xmin,
+		"xmax": l.Xmax,
+		"ymin": l.Ymin,
+		"ymax": l.Ymax,
+		"zmin": l.Zmin,
+		"zmax": l.Zmax,
 	}
-	return Lattice{Struts: struts}
 }
+
+func (l *Lattice) FromMap(data map[string]interface{}) error {
+	var ok bool
+	if uc_data, ok := data["uc"].(map[string]interface{}); ok {
+		uc := UnitCell{}
+		if err := uc.FromMap(uc_data); err != nil {
+			return err
+		}
+		l.UC = uc
+	} else {
+		return fmt.Errorf("uc is not a map")
+	}
+	if l.Xmin, ok = data["xmin"].(float64); !ok {
+		return fmt.Errorf("xmin is not a float64")
+	}
+	if l.Xmax, ok = data["xmax"].(float64); !ok {
+		return fmt.Errorf("xmax is not a float64")
+	}
+	if l.Ymin, ok = data["ymin"].(float64); !ok {
+		return fmt.Errorf("ymin is not a float64")
+	}
+	if l.Ymax, ok = data["ymax"].(float64); !ok {
+		return fmt.Errorf("ymax is not a float64")
+	}
+	if l.Zmin, ok = data["zmin"].(float64); !ok {
+		return fmt.Errorf("zmin is not a float64")
+	}
+	if l.Zmax, ok = data["zmax"].(float64); !ok {
+		return fmt.Errorf("zmax is not a float64")
+	}
+	return nil
+}
+
+func (l *Lattice) Density(x, y, z float64) float64 {
+	// check if point is within bounds
+	if x < l.Xmin || x > l.Xmax || y < l.Ymin || y > l.Ymax || z < l.Zmin || z > l.Zmax {
+		return 0.0
+	} else {
+		// map point to unit cell
+		dx := l.UC.Xmax - l.UC.Xmin
+		x = x - dx*math.Floor((x-l.UC.Xmin)/dx)
+		dy := l.UC.Ymax - l.UC.Ymin
+		y = y - dy*math.Floor((y-l.UC.Ymin)/dy)
+		dz := l.UC.Zmax - l.UC.Zmin
+		z = z - dz*math.Floor((z-l.UC.Zmin)/dz)
+		return l.UC.Density(x, y, z)
+	}
+}
+
+func MakeKelvin(rad float64, scale float64) UnitCell {
+	var struts = []Cylinder{
+		{P0: mgl64.Vec3{0.25, 0.00, 0.50}, P1: mgl64.Vec3{0.50, 0.00, 0.75}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.25, 1.00, 0.50}, P1: mgl64.Vec3{0.50, 1.00, 0.75}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.25, 0.00, 0.50}, P1: mgl64.Vec3{0.50, 0.00, 0.25}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.25, 1.00, 0.50}, P1: mgl64.Vec3{0.50, 1.00, 0.25}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.25, 0.00, 0.50}, P1: mgl64.Vec3{0.00, 0.25, 0.50}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.50, 0.00, 0.75}, P1: mgl64.Vec3{0.75, 0.00, 0.50}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.50, 1.00, 0.75}, P1: mgl64.Vec3{0.75, 1.00, 0.50}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.50, 0.00, 0.75}, P1: mgl64.Vec3{0.50, 0.25, 1.00}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.75, 0.00, 0.50}, P1: mgl64.Vec3{0.50, 0.00, 0.25}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.75, 1.00, 0.50}, P1: mgl64.Vec3{0.50, 1.00, 0.25}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.75, 0.00, 0.50}, P1: mgl64.Vec3{1.00, 0.25, 0.50}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.50, 0.00, 0.25}, P1: mgl64.Vec3{0.50, 0.25, 0.00}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{1.00, 0.50, 0.75}, P1: mgl64.Vec3{0.75, 0.50, 1.00}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{1.00, 0.75, 0.50}, P1: mgl64.Vec3{0.75, 1.00, 0.50}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{1.00, 0.50, 0.25}, P1: mgl64.Vec3{0.75, 0.50, 0.00}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.25, 1.00, 0.50}, P1: mgl64.Vec3{0.00, 0.75, 0.50}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.50, 1.00, 0.75}, P1: mgl64.Vec3{0.50, 0.75, 1.00}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.50, 1.00, 0.25}, P1: mgl64.Vec3{0.50, 0.75, 0.00}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.00, 0.25, 0.50}, P1: mgl64.Vec3{0.00, 0.50, 0.75}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{1.00, 0.25, 0.50}, P1: mgl64.Vec3{1.00, 0.50, 0.75}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.00, 0.25, 0.50}, P1: mgl64.Vec3{0.00, 0.50, 0.25}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{1.00, 0.25, 0.50}, P1: mgl64.Vec3{1.00, 0.50, 0.25}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.00, 0.50, 0.75}, P1: mgl64.Vec3{0.25, 0.50, 1.00}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.00, 0.50, 0.75}, P1: mgl64.Vec3{0.00, 0.75, 0.50}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{1.00, 0.50, 0.75}, P1: mgl64.Vec3{1.00, 0.75, 0.50}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.00, 0.75, 0.50}, P1: mgl64.Vec3{0.00, 0.50, 0.25}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{1.00, 0.75, 0.50}, P1: mgl64.Vec3{1.00, 0.50, 0.25}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.00, 0.50, 0.25}, P1: mgl64.Vec3{0.25, 0.50, 0.00}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.25, 0.50, 0.00}, P1: mgl64.Vec3{0.50, 0.75, 0.00}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.25, 0.50, 1.00}, P1: mgl64.Vec3{0.50, 0.75, 1.00}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.25, 0.50, 0.00}, P1: mgl64.Vec3{0.50, 0.25, 0.00}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.25, 0.50, 1.00}, P1: mgl64.Vec3{0.50, 0.25, 1.00}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.50, 0.75, 0.00}, P1: mgl64.Vec3{0.75, 0.50, 0.00}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.50, 0.75, 1.00}, P1: mgl64.Vec3{0.75, 0.50, 1.00}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.75, 0.50, 0.00}, P1: mgl64.Vec3{0.50, 0.25, 0.00}, Radius: rad, Rho: 1.0},
+		{P0: mgl64.Vec3{0.75, 0.50, 1.00}, P1: mgl64.Vec3{0.50, 0.25, 1.00}, Radius: rad, Rho: 1.0},
+	}
+	for i := 0; i < len(struts); i++ {
+		struts[i].P0 = struts[i].P0.Mul(scale)
+		struts[i].P1 = struts[i].P1.Mul(scale)
+	}
+	var objects = make([]Object, len(struts))
+	for i, strut := range struts {
+		objects[i] = &strut
+	}
+	uc := UnitCell{Struts: ObjectCollection{Objects: objects}, Xmin: 0.0, Xmax: 1.0 * scale, Ymin: 0.0, Ymax: 1.0 * scale, Zmin: 0.0, Zmax: 1.0 * scale}
+	return uc
+}
+
+// func MakeOctet(rad float64) Lattice {
+// 	s2 := math.Sqrt(2)
+// 	var struts = []Cylinder{
+// 		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0.5, 0.5, -1 / s2}, Radius: rad},
+// 		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{1, 0, 0}, Radius: rad},
+// 		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0.5, -0.5, -1 / s2}, Radius: rad},
+// 		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0, 1, 0}, Radius: rad},
+// 		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{-0.5, 0.5, -1 / s2}, Radius: rad},
+// 		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0.5, 0.5, 1 / s2}, Radius: rad},
+// 	}
+// 	return Lattice{Struts: struts}
+// }
