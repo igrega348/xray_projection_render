@@ -101,9 +101,9 @@ func load_object(fn string) objects.ObjectCollection {
 // 	}
 // }
 
-func make_object() objects.Lattice {
+func make_object() objects.TessellatedObjColl {
 	uc := objects.MakeKelvin(0.03, 0.5)
-	lat := objects.Lattice{UC: uc, Xmin: -1.0, Xmax: 1.0, Ymin: -1.0, Ymax: 1.0, Zmin: -1.0, Zmax: 1.0}
+	lat := objects.TessellatedObjColl{UC: uc, Xmin: -1.0, Xmax: 1.0, Ymin: -1.0, Ymax: 1.0, Zmin: -1.0, Zmax: 1.0}
 	return lat
 }
 

@@ -253,15 +253,7 @@ func (uc *UnitCell) Density(x, y, z float64) float64 {
 	if x < uc.Xmin || x > uc.Xmax || y < uc.Ymin || y > uc.Ymax || z < uc.Zmin || z > uc.Zmax {
 		return 0.0
 	}
-	for _, strut := range uc.Struts.Objects {
-		rho := strut.Density(x, y, z)
-		if rho > 0.0 {
-			return rho
-		} else {
-			continue
-		}
-	}
-	return 0.0
+	return uc.Struts.Density(x, y, z)
 }
 
 func (uc *UnitCell) ToMap() map[string]interface{} {
@@ -309,13 +301,13 @@ func (uc *UnitCell) FromMap(data map[string]interface{}) error {
 	return nil
 }
 
-type Lattice struct {
+type TessellatedObjColl struct {
 	// lattice is given by unit cell and bounds for tessellation
 	UC                                 UnitCell
 	Xmin, Xmax, Ymin, Ymax, Zmin, Zmax float64
 }
 
-func (l *Lattice) ToMap() map[string]interface{} {
+func (l *TessellatedObjColl) ToMap() map[string]interface{} {
 	return map[string]interface{}{
 		"type": "lattice",
 		"uc":   l.UC.ToMap(),
@@ -328,7 +320,7 @@ func (l *Lattice) ToMap() map[string]interface{} {
 	}
 }
 
-func (l *Lattice) FromMap(data map[string]interface{}) error {
+func (l *TessellatedObjColl) FromMap(data map[string]interface{}) error {
 	var ok bool
 	if uc_data, ok := data["uc"].(map[string]interface{}); ok {
 		uc := UnitCell{}
@@ -360,7 +352,7 @@ func (l *Lattice) FromMap(data map[string]interface{}) error {
 	return nil
 }
 
-func (l *Lattice) Density(x, y, z float64) float64 {
+func (l *TessellatedObjColl) Density(x, y, z float64) float64 {
 	// check if point is within bounds
 	if x < l.Xmin || x > l.Xmax || y < l.Ymin || y > l.Ymax || z < l.Zmin || z > l.Zmax {
 		return 0.0
