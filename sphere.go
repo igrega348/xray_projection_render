@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"image/png"
 	"math"
+	"math/rand"
 	"os"
 	"sync"
 	"time"
@@ -229,8 +230,8 @@ func main() {
 		th = float64(i_img) * dth
 		phi = math.Pi / 2.0
 		// phi random
-		// z := rand.Float64()*2 - 1
-		// phi = math.Acos(z)
+		z := rand.Float64()*2 - 1
+		phi = math.Acos(z)
 		bar.Add(1)
 		// zero out img
 		for i := 0; i < res; i++ {
