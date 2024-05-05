@@ -6,22 +6,22 @@ import (
 	"image"
 	"image/color"
 	"image/png"
-	"log"
 	"math"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/igrega348/sphere_render/objects"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/schollz/progressbar/v3"
 	"github.com/urfave/cli"
 	"gopkg.in/yaml.v3"
 )
 
-const fov = 45.0
-const R = 5.0
 const flat_field = 0.0
 
 // func make_object() objects.Lattice {
@@ -57,9 +57,10 @@ const flat_field = 0.0
 // }
 
 func load_object(fn string) objects.ObjectCollection {
+	log.Info().Msgf("Loading object from '%s'", fn)
 	data, err := os.ReadFile(fn)
 	if err != nil {
-		fmt.Println("Error reading file:", err)
+		log.Fatal().Err(err)
 	}
 	out := map[string]interface{}{}
 	// can have either yaml or json based on file extension via switch
@@ -67,12 +68,12 @@ func load_object(fn string) objects.ObjectCollection {
 	case "yaml":
 		err = yaml.Unmarshal(data, &out)
 		if err != nil {
-			fmt.Println("Error unmarshalling YAML:", err)
+			log.Error().Msgf("Error unmarshalling YAML: %v", err)
 		}
 	case "json":
 		err = json.Unmarshal(data, &out)
 		if err != nil {
-			fmt.Println("Error unmarshalling JSON:", err)
+			log.Error().Msgf("Error unmarshalling JSON: %v", err)
 		}
 	default:
 		fmt.Println("Unknown file extension:", ext)
@@ -80,27 +81,10 @@ func load_object(fn string) objects.ObjectCollection {
 	objcoll := objects.ObjectCollection{}
 	err = objcoll.FromMap(out)
 	if err != nil {
-		fmt.Println("Error converting to object collection:", err)
+		log.Error().Msgf("Error converting to object collection: %v", err)
 	}
 	return objcoll
 }
-
-// func make_object() objects.ObjectCollection {
-// 	return objects.ObjectCollection{
-// 		Objects: []objects.Object{
-// 			&objects.Cube{Center: mgl64.Vec3{0, 0, 0}, Side: 1.0, Rho: 1.0},
-// 			&objects.Sphere{Center: mgl64.Vec3{0, 0, 0}, Radius: 0.25, Rho: -1.0},
-// 		},
-// 	}
-// }
-
-// func make_object() objects.Sphere {
-// 	return objects.Sphere{
-// 		Center: mgl64.Vec3{-1, 0, 0},
-// 		Radius: 0.5,
-// 		Rho:    1.0,
-// 	}
-// }
 
 func make_object() objects.TessellatedObjColl {
 	uc := objects.MakeKelvin(0.03, 0.5)
@@ -108,10 +92,8 @@ func make_object() objects.TessellatedObjColl {
 	return lat
 }
 
-// var lat = load_object("balls.yaml")
 var lat = objects.ObjectCollection{}
-
-// var lat = make_object()
+var integrate = integrate_along_ray
 
 func deform(x, y, z float64) (float64, float64, float64) {
 	// Try Gaussian displacement field
@@ -123,14 +105,7 @@ func deform(x, y, z float64) (float64, float64, float64) {
 
 func density(x, y, z float64) float64 {
 	// x, y, z = deform(x, y, z)
-	// return lat.Density(x, y, z)
 	return lat.Density(x, y, z)
-	// r_2 := x*x + y*y + z*z // sphere centered at origin
-	// if r_2 < 0.25 {
-	// 	return 1.0
-	// } else {
-	// 	return 0.0
-	// }
 }
 
 func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) float64 {
@@ -152,10 +127,10 @@ func integrate_hierarchical(origin, direction mgl64.Vec3, DS, smin, smax float64
 	direction = direction.Normalize()
 	// check clipping
 	if density(origin[0]+direction[0]*smin, origin[1]+direction[1]*smin, origin[2]+direction[2]*smin) > 0 {
-		fmt.Println("Clipping at smin detected")
+		log.Warn().Msg("Clipping at smin detected")
 	}
 	if density(origin[0]+direction[0]*smax, origin[1]+direction[1]*smax, origin[2]+direction[2]*smax) > 0 {
-		fmt.Println("Clipping at smax detected")
+		log.Warn().Msg("Clipping at smax detected")
 	}
 	// integrate using sliding window
 	right := smin + DS
@@ -191,7 +166,8 @@ func integrate_hierarchical(origin, direction mgl64.Vec3, DS, smin, smax float64
 func computePixel(img [][]float64, i, j int, origin, direction mgl64.Vec3, ds, smin, smax float64, wg *sync.WaitGroup) {
 	defer wg.Done()
 	// img[i][j] = integrate_along_ray(origin, direction, ds, smin, smax)
-	img[i][j] = integrate_hierarchical(origin, direction, ds, smin, smax)
+	// img[i][j] = integrate_hierarchical(origin, direction, ds, smin, smax)
+	img[i][j] = integrate(origin, direction, ds, smin, smax)
 }
 
 func timer() func() {
@@ -216,19 +192,39 @@ type TransformParams struct {
 	Frames      []OneParam `json:"frames"`
 }
 
-func render(input string, output_dir string, fname_pattern string, res int, num_images int, out_of_plane bool, ds float64) {
+func render(
+	input string,
+	output_dir string,
+	fname_pattern string,
+	res int,
+	num_images int,
+	out_of_plane bool,
+	ds float64,
+	R float64,
+	fov float64,
+) {
 	defer timer()()
 
 	lat = load_object(input)
 	// create output directory if it doesn't exist
 	if _, err := os.Stat(output_dir); os.IsNotExist(err) {
+		log.Info().Msgf("Creating output directory '%s'", output_dir)
 		os.Mkdir(output_dir, 0755)
+	} else {
+		log.Info().Msgf("Output to directory '%s'", output_dir)
 	}
 	// set or compute ds
 	if ds < 0 {
 		ds = lat.MinFeatureSize() / 10.0
+		log.Info().Msgf("Setting ds to %f", ds)
 	}
 
+	if out_of_plane {
+		log.Info().Msg("Random polar angle")
+	} else {
+		log.Info().Msg("Fixed polar angle at 90 degrees")
+	}
+	log.Info().Msgf("Generating %d images at resolution %d", num_images, res)
 	res_f := float64(res)
 
 	img := make([][]float64, res)
@@ -247,7 +243,6 @@ func render(input string, output_dir string, fname_pattern string, res int, num_
 	min_val, max_val := 1.0, 0.0
 
 	bar := progressbar.Default(int64(num_images))
-
 	for i_img := 0; i_img < num_images; i_img++ {
 		dth := 360.0 / float64(num_images)
 		var th, phi float64
@@ -313,15 +308,15 @@ func render(input string, output_dir string, fname_pattern string, res int, num_
 			}
 		}
 		if i_img == 0 || i_img == num_images-1 {
-			fmt.Println("Min value:", min_val, "Max value:", max_val)
+			log.Info().Msgf("Min value: %f, Max value: %f", min_val, max_val)
 		}
 		// Save to out.png
-		// filename := output_dir + fmt.Sprintf("eval_%03d.png", i_img)
-		filename := fmt.Sprintf(output_dir+"/"+fname_pattern, i_img)
+		filename := filepath.Join(output_dir, fmt.Sprintf(fname_pattern, i_img))
 		out, err := os.Create(filename)
 		if err != nil {
-			panic(err)
+			log.Panic().Err(err)
 		}
+		log.Debug().Msgf("Saving image to '%s'", filename)
 		png.Encode(out, myImage)
 		out.Close()
 
@@ -333,6 +328,7 @@ func render(input string, output_dir string, fname_pattern string, res int, num_
 	if err != nil {
 		fmt.Println("Error marshalling to JSON:", err)
 	}
+	log.Info().Msg("Writing transform parameters to 'transforms.json'")
 	err = os.WriteFile("transforms.json", jsonData, 0644)
 	if err != nil {
 		fmt.Println("Error writing JSON to file:", err)
@@ -344,6 +340,7 @@ func render(input string, output_dir string, fname_pattern string, res int, num_
 	if err != nil {
 		fmt.Println("Error marshalling object:", err)
 	}
+	log.Info().Msg("Writing object to 'object.yaml'")
 	err = os.WriteFile("object.yaml", data, 0644)
 	if err != nil {
 		fmt.Println("Error writing file:", err)
@@ -387,8 +384,45 @@ func main() {
 				Usage: "Integration step size. If negative, try to infer from smallest feature size in the input file",
 				Value: -1.0,
 			},
+			&cli.Float64Flag{
+				Name:  "R",
+				Usage: "Distance between camera and centre of scene",
+				Value: 5.0,
+			},
+			&cli.Float64Flag{
+				Name:  "fov",
+				Usage: "Field of view in degrees",
+				Value: 45.0,
+			},
+			&cli.StringFlag{
+				Name: "integration",
+				Usage: "Integration method to use. Options are 'simple' or 'hierarchical'. " +
+					"Simple method integrates along the ray in fixed steps. " +
+					"Hierarchical method uses a sliding window to integrate along the ray.",
+				Value: "hierarchical",
+			},
+			// verbose flag
+			&cli.BoolFlag{
+				Name:  "v",
+				Usage: "Enable verbose logging",
+			},
 		},
 		Action: func(cCtx *cli.Context) error {
+			log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+			if cCtx.Bool("v") {
+				zerolog.SetGlobalLevel(zerolog.InfoLevel)
+			} else {
+				zerolog.SetGlobalLevel(zerolog.WarnLevel)
+			}
+			if cCtx.String("integration") == "simple" {
+				integrate = integrate_along_ray
+				log.Info().Msg("Using simple integration method")
+			} else if cCtx.String("integration") == "hierarchical" {
+				integrate = integrate_hierarchical
+				log.Info().Msg("Using hierarchical integration method")
+			} else {
+				log.Fatal().Msgf("Unknown integration method: %s", cCtx.String("integration"))
+			}
 			render(
 				cCtx.String("input"),
 				cCtx.String("output_dir"),
@@ -397,12 +431,14 @@ func main() {
 				cCtx.Int("num_projections"),
 				cCtx.Bool("out_of_plane"),
 				cCtx.Float64("ds"),
+				cCtx.Float64("R"),
+				cCtx.Float64("fov"),
 			)
 			return nil
 		},
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err)
 	}
 }
