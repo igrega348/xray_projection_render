@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"image/png"
 	"math"
+	"math/rand"
 	"os"
 	"strconv"
 	"sync"
@@ -21,9 +22,9 @@ import (
 const res = 2000
 const fov = 45.0
 const R = 4.5
-const num_images = 256
+const num_images = 25
 const flat_field = 0.0
-const NUM_JOBS = 16
+const NUM_JOBS = 1
 
 // func make_object() objects.Lattice {
 // 	var kelvin_uc = objects.MakeKelvin(0.075, 0.8)
@@ -198,7 +199,8 @@ func main() {
 	}
 	fmt.Println("Job:", job)
 	// create folder for output images
-	err = os.Mkdir(fmt.Sprintf("pics_%d", job), 0755)
+	// err = os.Mkdir(fmt.Sprintf("images_%d", job), 0755)
+	err = os.Mkdir("images", 0755)
 	if err != nil {
 		fmt.Println("Error creating directory:", err)
 	}
@@ -233,7 +235,10 @@ func main() {
 		var th, phi float64
 
 		th = float64(i_img) * dth
-		phi = math.Pi / 2.0
+		// phi = math.Pi / 2.0
+		// phi random
+		z := rand.Float64()*2 - 1
+		phi = math.Acos(z)
 
 		// zero out img
 		for i := 0; i < res; i++ {
@@ -270,7 +275,7 @@ func main() {
 				go computePixel(&img, i, j, origin, vx.Sub(origin), 0.01, R-1.41, R+1.41, &wg)
 				if (i*res+j)%(pix_step) == 0 {
 					// fmt.Printf(".")
-					wrt.Write([]byte("."))
+					wrt.Write([]byte("-"))
 					// os.Stdout.Write([]byte("."))
 				}
 			}
@@ -302,7 +307,7 @@ func main() {
 			wrt.Write([]byte(s))
 		}
 		// Save to out.png
-		filename := fmt.Sprintf("pics_%d/out%03d.png", job, i_img)
+		filename := fmt.Sprintf("images/eval_%03d.png", job, i_img)
 		out, err := os.Create(filename)
 		if err != nil {
 			panic(err)
@@ -316,7 +321,7 @@ func main() {
 	// fmt.Println("Min value:", min_val, "Max value:", max_val)
 
 	// Optionally, write JSON data to a file
-	file, err := os.Create(fmt.Sprintf("transforms_%d.json", job))
+	file, err := os.Create(fmt.Sprintf("transforms_eval%d.json", job))
 	if err != nil {
 		fmt.Println("Error creating file:", err)
 		return
