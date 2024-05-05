@@ -9,20 +9,19 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/go-gl/mathgl/mgl64"
-	"gopkg.in/yaml.v3"
-
 	"github.com/igrega348/sphere_render/objects"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"github.com/urfave/cli"
+	"gopkg.in/yaml.v3"
 )
 
-const res = 2000
-const fov = 45.0
-const R = 4.5
-const num_images = 25
 const flat_field = 0.0
 const NUM_JOBS = 1
 
@@ -32,66 +31,70 @@ const NUM_JOBS = 1
 // 	return kelvin_uc
 // }
 
-func load_object() objects.Lattice {
-	fn := "lattice.yaml"
-	data, err := os.ReadFile(fn)
-	if err != nil {
-		fmt.Println("Error reading file:", err)
-	}
-	out := map[string]interface{}{}
-	err = yaml.Unmarshal(data, &out)
-	if err != nil {
-		fmt.Println("Error unmarshalling YAML to map", err)
-	}
-	lat := objects.Lattice{}
-	err = lat.FromYAML(out)
-	if err != nil {
-		fmt.Println("Error converting to lattice:", err)
-	}
-	if out["tessellate"] != nil {
-		nx := out["tessellate"].([]interface{})[0].(int)
-		ny := out["tessellate"].([]interface{})[1].(int)
-		nz := out["tessellate"].([]interface{})[2].(int)
-		lat = lat.Tesselate(nx, ny, nz)
-	}
-	fmt.Println("Lattice loaded")
-	return lat
-}
-
-// func load_object() objects.ObjectCollection {
-// 	fn := "pillars.yaml"
+// func load_object() objects.Lattice {
+// 	fn := "lattice.yaml"
 // 	data, err := os.ReadFile(fn)
 // 	if err != nil {
 // 		fmt.Println("Error reading file:", err)
 // 	}
-
 // 	out := map[string]interface{}{}
 // 	err = yaml.Unmarshal(data, &out)
 // 	if err != nil {
-// 		fmt.Println("Error unmarshalling YAML:", err)
+// 		fmt.Println("Error unmarshalling YAML to map", err)
 // 	}
-// 	balls := objects.ObjectCollection{}
-// 	err = balls.FromYAML(out)
+// 	lat := objects.Lattice{}
+// 	err = lat.FromMap(out)
 // 	if err != nil {
-// 		fmt.Println("Error converting to object collection:", err)
+// 		fmt.Println("Error converting to lattice:", err)
 // 	}
-// 	return balls
-// }
-
-// func make_object() objects.ObjectCollection {
-// 	return objects.ObjectCollection{
-// 		Objects: []objects.Object{
-// 			&objects.Cube{Center: mgl64.Vec3{0, 0, 0}, Side: 1.0, Rho: 1.0},
-// 			&objects.Sphere{Center: mgl64.Vec3{0, 0, 0}, Radius: 0.25, Rho: -1.0},
-// 		},
+// 	if out["tessellate"] != nil {
+// 		nx := out["tessellate"].([]interface{})[0].(int)
+// 		ny := out["tessellate"].([]interface{})[1].(int)
+// 		nz := out["tessellate"].([]interface{})[2].(int)
+// 		lat = lat.Tesselate(nx, ny, nz)
 // 	}
+// 	fmt.Println("Lattice loaded")
+// 	return lat
 // }
 
-// func make_object() objects.Cube {
-// 	return objects.Cube{Center: mgl64.Vec3{0, 0, 0}, Side: 2.0, Rho: 1.0}
-// }
+func load_object(fn string) objects.ObjectCollection {
+	log.Info().Msgf("Loading object from '%s'", fn)
+	data, err := os.ReadFile(fn)
+	if err != nil {
+		log.Fatal().Err(err)
+	}
+	out := map[string]interface{}{}
+	// can have either yaml or json based on file extension via switch
+	switch ext := fn[len(fn)-4:]; ext {
+	case "yaml":
+		err = yaml.Unmarshal(data, &out)
+		if err != nil {
+			log.Error().Msgf("Error unmarshalling YAML: %v", err)
+		}
+	case "json":
+		err = json.Unmarshal(data, &out)
+		if err != nil {
+			log.Error().Msgf("Error unmarshalling JSON: %v", err)
+		}
+	default:
+		fmt.Println("Unknown file extension:", ext)
+	}
+	objcoll := objects.ObjectCollection{}
+	err = objcoll.FromMap(out)
+	if err != nil {
+		log.Error().Msgf("Error converting to object collection: %v", err)
+	}
+	return objcoll
+}
 
-var lat = load_object()
+func make_object() objects.TessellatedObjColl {
+	uc := objects.MakeKelvin(0.03, 0.5)
+	lat := objects.TessellatedObjColl{UC: uc, Xmin: -1.0, Xmax: 1.0, Ymin: -1.0, Ymax: 1.0, Zmin: -1.0, Zmax: 1.0}
+	return lat
+}
+
+var lat = objects.ObjectCollection{}
+var integrate = integrate_along_ray
 
 func deform(x, y, z float64) (float64, float64, float64) {
 	// Try Gaussian displacement field
@@ -103,14 +106,7 @@ func deform(x, y, z float64) (float64, float64, float64) {
 
 func density(x, y, z float64) float64 {
 	// x, y, z = deform(x, y, z)
-	// return lat.Density(x, y, z)
 	return lat.Density(x, y, z)
-	// r_2 := x*x + y*y + z*z // sphere centered at origin
-	// if r_2 < 0.25 {
-	// 	return 1.0
-	// } else {
-	// 	return 0.0
-	// }
 }
 
 func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) float64 {
@@ -130,6 +126,13 @@ func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) f
 func integrate_hierarchical(origin, direction mgl64.Vec3, DS, smin, smax float64) float64 {
 	// normalize components of the ray
 	direction = direction.Normalize()
+	// check clipping
+	if density(origin[0]+direction[0]*smin, origin[1]+direction[1]*smin, origin[2]+direction[2]*smin) > 0 {
+		log.Warn().Msg("Clipping at smin detected")
+	}
+	if density(origin[0]+direction[0]*smax, origin[1]+direction[1]*smax, origin[2]+direction[2]*smax) > 0 {
+		log.Warn().Msg("Clipping at smax detected")
+	}
 	// integrate using sliding window
 	right := smin + DS
 	left := smin
@@ -161,10 +164,11 @@ func integrate_hierarchical(origin, direction mgl64.Vec3, DS, smin, smax float64
 	return math.Exp(-T)
 }
 
-func computePixel(img *[res][res]float64, i, j int, origin, direction mgl64.Vec3, ds, smin, smax float64, wg *sync.WaitGroup) {
+func computePixel(img [][]float64, i, j int, origin, direction mgl64.Vec3, ds, smin, smax float64, wg *sync.WaitGroup) {
 	defer wg.Done()
 	// img[i][j] = integrate_along_ray(origin, direction, ds, smin, smax)
-	img[i][j] = integrate_hierarchical(origin, direction, ds, smin, smax)
+	// img[i][j] = integrate_hierarchical(origin, direction, ds, smin, smax)
+	img[i][j] = integrate(origin, direction, ds, smin, smax)
 }
 
 func timer() func() {
@@ -182,14 +186,24 @@ type TransformParams struct {
 	CameraAngle float64    `json:"camera_angle_x"`
 	FL_X        float64    `json:"fl_x"`
 	FL_Y        float64    `json:"fl_y"`
-	W           float64    `json:"w"`
-	H           float64    `json:"h"`
+	W           int        `json:"w"`
+	H           int        `json:"h"`
 	CX          float64    `json:"cx"`
 	CY          float64    `json:"cy"`
 	Frames      []OneParam `json:"frames"`
 }
 
-func main() {
+func render(
+	input string,
+	output_dir string,
+	fname_pattern string,
+	res int,
+	num_images int,
+	out_of_plane bool,
+	ds float64,
+	R float64,
+	fov float64,
+) {
 	defer timer()()
 	wrt := os.Stdout
 	job, err := strconv.Atoi(os.Getenv("NUM_MOD_DIV"))
@@ -198,21 +212,40 @@ func main() {
 		job = 0
 	}
 	fmt.Println("Job:", job)
-	// create folder for output images
-	// err = os.Mkdir(fmt.Sprintf("images_%d", job), 0755)
-	err = os.Mkdir("images", 0755)
-	if err != nil {
-		fmt.Println("Error creating directory:", err)
+
+	lat = load_object(input)
+	// create output directory if it doesn't exist
+	if _, err := os.Stat(output_dir); os.IsNotExist(err) {
+		log.Info().Msgf("Creating output directory '%s'", output_dir)
+		os.Mkdir(output_dir, 0755)
+	} else {
+		log.Info().Msgf("Output to directory '%s'", output_dir)
+	}
+	// set or compute ds
+	if ds < 0 {
+		ds = lat.MinFeatureSize() / 10.0
+		log.Info().Msgf("Setting ds to %f", ds)
 	}
 
-	var img [res][res]float64
+	if out_of_plane {
+		log.Info().Msg("Random polar angle")
+	} else {
+		log.Info().Msg("Fixed polar angle at 90 degrees")
+	}
+	log.Info().Msgf("Generating %d images at resolution %d", num_images, res)
+	res_f := float64(res)
+
+	img := make([][]float64, res)
+	for i := range img {
+		img[i] = make([]float64, res) // [0.0, 0.0, ... 0.0
+	}
 
 	transform_params := TransformParams{
 		CameraAngle: fov * math.Pi / 180.0,
 		W:           res,
 		H:           res,
-		CX:          res / 2.0,
-		CY:          res / 2.0,
+		CX:          res_f / 2.0,
+		CY:          res_f / 2.0,
 		Frames:      []OneParam{},
 	}
 	min_val, max_val := 1.0, 0.0
@@ -231,14 +264,17 @@ func main() {
 		s = fmt.Sprintf("%3d/%3d [", i_img, num_images)
 		wrt.Write([]byte(s))
 
-		dth := 360.0 / num_images
+		dth := 360.0 / float64(num_images)
 		var th, phi float64
 
 		th = float64(i_img) * dth
-		// phi = math.Pi / 2.0
-		// phi random
-		z := rand.Float64()*2 - 1
-		phi = math.Acos(z)
+		if out_of_plane {
+			// phi random
+			z := rand.Float64()*2 - 1
+			phi = math.Acos(z)
+		} else {
+			phi = math.Pi / 2.0
+		}
 
 		// zero out img
 		for i := 0; i < res; i++ {
@@ -247,10 +283,10 @@ func main() {
 			}
 		}
 
-		origin := mgl64.Vec3{R * math.Cos(mgl64.DegToRad(float64(th))) * math.Sin(phi), R * math.Sin(mgl64.DegToRad(float64(th))) * math.Sin(phi), math.Cos(phi) * R}
+		eye := mgl64.Vec3{R * math.Cos(mgl64.DegToRad(float64(th))) * math.Sin(phi), R * math.Sin(mgl64.DegToRad(float64(th))) * math.Sin(phi), math.Cos(phi) * R}
 		center := mgl64.Vec3{0, 0, 0}
 		up := mgl64.Vec3{0, 0, 1}
-		camera := mgl64.LookAtV(origin, center, up)
+		camera := mgl64.LookAtV(eye, center, up)
 		// try to use the matrix to transform coordinates from camera space to world space
 		camera = camera.Inv()
 
@@ -265,18 +301,16 @@ func main() {
 		t1 := time.Now()
 		var wg sync.WaitGroup
 		f := 1 / math.Tan(mgl64.DegToRad(fov/2))
-		transform_params.FL_X = f * res / 2.0
-		transform_params.FL_Y = f * res / 2.0
+		transform_params.FL_X = f * res_f / 2.0
+		transform_params.FL_Y = f * res_f / 2.0
 		for i := 0; i < res; i++ {
 			for j := 0; j < res; j++ {
 				wg.Add(1)
-				vx := mgl64.Vec3{float64(i)/(res/2) - 1, float64(j)/(res/2) - 1, -f}
+				vx := mgl64.Vec3{float64(i)/(res_f/2) - 1, float64(j)/(res_f/2) - 1, -f}
 				vx = mgl64.TransformCoordinate(vx, camera)
-				go computePixel(&img, i, j, origin, vx.Sub(origin), 0.01, R-1.41, R+1.41, &wg)
+				go computePixel(&img, i, j, origin, vx.Sub(origin), ds, R-1.41, R+1.41, &wg)
 				if (i*res+j)%(pix_step) == 0 {
-					// fmt.Printf(".")
 					wrt.Write([]byte("-"))
-					// os.Stdout.Write([]byte("."))
 				}
 			}
 		}
@@ -293,7 +327,8 @@ func main() {
 			for j := 0; j < res; j++ {
 				val := img[i][j]
 				c := color.RGBA64{uint16(val * 0xffff), uint16(val * 0xffff), uint16(val * 0xffff), 0xffff}
-				myImage.SetRGBA64(i, j, c)
+				// image has origin at top left, so we need to flip the y coordinate
+				myImage.SetRGBA64(i, res-j, c)
 				if val < min_val {
 					min_val = val
 				}
@@ -303,48 +338,137 @@ func main() {
 			}
 		}
 		if i_img == 0 || i_img == num_images-1 {
-			s = fmt.Sprint("Min value: ", min_val, " Max value: ", max_val, "\n")
-			wrt.Write([]byte(s))
+			log.Info().Msgf("Min value: %f, Max value: %f", min_val, max_val)
 		}
 		// Save to out.png
-		filename := fmt.Sprintf("images/eval_%03d.png", job, i_img)
+		filename := filepath.Join(output_dir, fmt.Sprintf(fname_pattern, i_img))
 		out, err := os.Create(filename)
 		if err != nil {
-			panic(err)
+			log.Panic().Err(err)
 		}
+		log.Debug().Msgf("Saving image to '%s'", filename)
 		png.Encode(out, myImage)
 		out.Close()
 
 		transform_params.Frames = append(transform_params.Frames, OneParam{FilePath: filename, TransformMatrix: rows})
 	}
 
-	// fmt.Println("Min value:", min_val, "Max value:", max_val)
-
-	// Optionally, write JSON data to a file
-	file, err := os.Create(fmt.Sprintf("transforms_eval%d.json", job))
-	if err != nil {
-		fmt.Println("Error creating file:", err)
-		return
-	}
-	defer file.Close()
-
+	// write transform parameters to JSON
 	jsonData, err := json.MarshalIndent(transform_params, "", "  ")
 	if err != nil {
 		fmt.Println("Error marshalling to JSON:", err)
 	}
-	_, err = file.Write(jsonData)
-
+	log.Info().Msg("Writing transform parameters to 'transforms.json'")
+	err = os.WriteFile(fmt.Sprintf("transforms_eval%d.json", job), jsonData, 0644)
 	if err != nil {
 		fmt.Println("Error writing JSON to file:", err)
 	}
 
-	// write object to YAML
-	data, err := yaml.Marshal(lat.ToYAML())
+	// write object to JSON or YAML
+	// data, err := json.MarshalIndent(lat.ToMap(), "", "  ")
+	data, err := yaml.Marshal(lat.ToMap())
 	if err != nil {
-		fmt.Println("Error marshalling to YAML:", err)
+		fmt.Println("Error marshalling object:", err)
 	}
-	err = os.WriteFile(fmt.Sprintf("object_%d.yaml", job), data, 0644)
+	log.Info().Msg("Writing object to 'object.yaml'")
+	err = os.WriteFile("object.yaml", data, 0644)
 	if err != nil {
-		fmt.Println("Error writing YAML to file:", err)
+		fmt.Println("Error writing file:", err)
+	}
+}
+
+func main() {
+	app := &cli.App{
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "output_dir",
+				Usage: "Output directory to save the images",
+				Value: "images",
+			},
+			&cli.StringFlag{
+				Name:     "input",
+				Usage:    "Input yaml file describing the object",
+				Required: true,
+			},
+			&cli.IntFlag{
+				Name:  "num_projections",
+				Usage: "Number of projections to generate",
+				Value: 16,
+			},
+			&cli.IntFlag{
+				Name:  "resolution",
+				Usage: "Resolution of the square output images",
+				Value: 512,
+			},
+			&cli.BoolFlag{
+				Name:  "out_of_plane",
+				Usage: "Generate out of plane projections",
+			},
+			&cli.StringFlag{
+				Name:  "fname_pattern",
+				Usage: "Sprintf pattern for output file name",
+				Value: "image_%03d.png",
+			},
+			&cli.Float64Flag{
+				Name:  "ds",
+				Usage: "Integration step size. If negative, try to infer from smallest feature size in the input file",
+				Value: -1.0,
+			},
+			&cli.Float64Flag{
+				Name:  "R",
+				Usage: "Distance between camera and centre of scene",
+				Value: 5.0,
+			},
+			&cli.Float64Flag{
+				Name:  "fov",
+				Usage: "Field of view in degrees",
+				Value: 45.0,
+			},
+			&cli.StringFlag{
+				Name: "integration",
+				Usage: "Integration method to use. Options are 'simple' or 'hierarchical'. " +
+					"Simple method integrates along the ray in fixed steps. " +
+					"Hierarchical method uses a sliding window to integrate along the ray.",
+				Value: "hierarchical",
+			},
+			// verbose flag
+			&cli.BoolFlag{
+				Name:  "v",
+				Usage: "Enable verbose logging",
+			},
+		},
+		Action: func(cCtx *cli.Context) error {
+			log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+			if cCtx.Bool("v") {
+				zerolog.SetGlobalLevel(zerolog.InfoLevel)
+			} else {
+				zerolog.SetGlobalLevel(zerolog.WarnLevel)
+			}
+			if cCtx.String("integration") == "simple" {
+				integrate = integrate_along_ray
+				log.Info().Msg("Using simple integration method")
+			} else if cCtx.String("integration") == "hierarchical" {
+				integrate = integrate_hierarchical
+				log.Info().Msg("Using hierarchical integration method")
+			} else {
+				log.Fatal().Msgf("Unknown integration method: %s", cCtx.String("integration"))
+			}
+			render(
+				cCtx.String("input"),
+				cCtx.String("output_dir"),
+				cCtx.String("fname_pattern"),
+				cCtx.Int("resolution"),
+				cCtx.Int("num_projections"),
+				cCtx.Bool("out_of_plane"),
+				cCtx.Float64("ds"),
+				cCtx.Float64("R"),
+				cCtx.Float64("fov"),
+			)
+			return nil
+		},
+	}
+
+	if err := app.Run(os.Args); err != nil {
+		log.Fatal().Err(err)
 	}
 }
