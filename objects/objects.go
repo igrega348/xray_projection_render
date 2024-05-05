@@ -11,6 +11,7 @@ type Object interface {
 	Density(x, y, z float64) float64
 	ToMap() map[string]interface{}
 	FromMap(data map[string]interface{}) error
+	MinFeatureSize() float64
 }
 
 type Sphere struct {
@@ -59,6 +60,10 @@ func (s *Sphere) Density(x, y, z float64) float64 {
 	return 0.0
 }
 
+func (s *Sphere) MinFeatureSize() float64 {
+	return s.Radius
+}
+
 type Cube struct {
 	Object
 	// parameters are center and side length
@@ -102,6 +107,10 @@ func (c *Cube) Density(x, y, z float64) float64 {
 		return c.Rho
 	}
 	return 0.0
+}
+
+func (c *Cube) MinFeatureSize() float64 {
+	return c.Side
 }
 
 func ToVec(data *[]interface{}, vec *mgl64.Vec3) error {
@@ -178,6 +187,10 @@ func (cyl *Cylinder) Density(x, y, z float64) float64 {
 	}
 }
 
+func (cyl *Cylinder) MinFeatureSize() float64 {
+	return cyl.Radius
+}
+
 type ObjectCollection struct {
 	Objects []Object
 }
@@ -240,6 +253,14 @@ func (oc *ObjectCollection) Density(x, y, z float64) float64 {
 		density = 1.0
 	}
 	return density
+}
+
+func (oc *ObjectCollection) MinFeatureSize() float64 {
+	out := math.Inf(1)
+	for _, object := range oc.Objects {
+		out = math.Min(out, object.MinFeatureSize())
+	}
+	return out
 }
 
 type UnitCell struct {

@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"log"
 	"math"
 	"math/rand"
 	"os"
@@ -15,13 +16,12 @@ import (
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/igrega348/sphere_render/objects"
 	"github.com/schollz/progressbar/v3"
+	"github.com/urfave/cli"
 	"gopkg.in/yaml.v3"
 )
 
-const res = 1000
 const fov = 45.0
 const R = 5.0
-const num_images = 1
 const flat_field = 0.0
 
 // func make_object() objects.Lattice {
@@ -109,7 +109,9 @@ func make_object() objects.TessellatedObjColl {
 }
 
 // var lat = load_object("balls.yaml")
-var lat = make_object()
+var lat = objects.ObjectCollection{}
+
+// var lat = make_object()
 
 func deform(x, y, z float64) (float64, float64, float64) {
 	// Try Gaussian displacement field
@@ -186,7 +188,7 @@ func integrate_hierarchical(origin, direction mgl64.Vec3, DS, smin, smax float64
 	return math.Exp(-T)
 }
 
-func computePixel(img *[res][res]float64, i, j int, origin, direction mgl64.Vec3, ds, smin, smax float64, wg *sync.WaitGroup) {
+func computePixel(img [][]float64, i, j int, origin, direction mgl64.Vec3, ds, smin, smax float64, wg *sync.WaitGroup) {
 	defer wg.Done()
 	// img[i][j] = integrate_along_ray(origin, direction, ds, smin, smax)
 	img[i][j] = integrate_hierarchical(origin, direction, ds, smin, smax)
@@ -207,23 +209,39 @@ type TransformParams struct {
 	CameraAngle float64    `json:"camera_angle_x"`
 	FL_X        float64    `json:"fl_x"`
 	FL_Y        float64    `json:"fl_y"`
-	W           float64    `json:"w"`
-	H           float64    `json:"h"`
+	W           int        `json:"w"`
+	H           int        `json:"h"`
 	CX          float64    `json:"cx"`
 	CY          float64    `json:"cy"`
 	Frames      []OneParam `json:"frames"`
 }
 
-func main() {
+func render(input string, output_dir string, fname_pattern string, res int, num_images int, out_of_plane bool, ds float64) {
 	defer timer()()
-	var img [res][res]float64
+
+	lat = load_object(input)
+	// create output directory if it doesn't exist
+	if _, err := os.Stat(output_dir); os.IsNotExist(err) {
+		os.Mkdir(output_dir, 0755)
+	}
+	// set or compute ds
+	if ds < 0 {
+		ds = lat.MinFeatureSize() / 10.0
+	}
+
+	res_f := float64(res)
+
+	img := make([][]float64, res)
+	for i := range img {
+		img[i] = make([]float64, res) // [0.0, 0.0, ... 0.0
+	}
 
 	transform_params := TransformParams{
 		CameraAngle: fov * math.Pi / 180.0,
 		W:           res,
 		H:           res,
-		CX:          res / 2.0,
-		CY:          res / 2.0,
+		CX:          res_f / 2.0,
+		CY:          res_f / 2.0,
 		Frames:      []OneParam{},
 	}
 	min_val, max_val := 1.0, 0.0
@@ -231,14 +249,17 @@ func main() {
 	bar := progressbar.Default(int64(num_images))
 
 	for i_img := 0; i_img < num_images; i_img++ {
-		dth := 360.0 / num_images
+		dth := 360.0 / float64(num_images)
 		var th, phi float64
 
 		th = float64(i_img) * dth
-		phi = math.Pi / 2.0
-		// phi random
-		z := rand.Float64()*2 - 1
-		phi = math.Acos(z)
+		if out_of_plane {
+			// phi random
+			z := rand.Float64()*2 - 1
+			phi = math.Acos(z)
+		} else {
+			phi = math.Pi / 2.0
+		}
 		bar.Add(1)
 		// zero out img
 		for i := 0; i < res; i++ {
@@ -264,14 +285,14 @@ func main() {
 
 		var wg sync.WaitGroup
 		f := 1 / math.Tan(mgl64.DegToRad(fov/2))
-		transform_params.FL_X = f * res / 2.0
-		transform_params.FL_Y = f * res / 2.0
+		transform_params.FL_X = f * res_f / 2.0
+		transform_params.FL_Y = f * res_f / 2.0
 		for i := 0; i < res; i++ {
 			for j := 0; j < res; j++ {
 				wg.Add(1)
-				vx := mgl64.Vec3{float64(i)/(res/2) - 1, float64(j)/(res/2) - 1, -f}
+				vx := mgl64.Vec3{float64(i)/(res_f/2) - 1, float64(j)/(res_f/2) - 1, -f}
 				vx = mgl64.TransformCoordinate(vx, camera)
-				go computePixel(&img, i, j, eye, vx.Sub(eye), 0.01, R-1.41, R+1.41, &wg)
+				go computePixel(img, i, j, eye, vx.Sub(eye), ds, R-1.41, R+1.41, &wg)
 			}
 		}
 		wg.Wait()
@@ -295,7 +316,8 @@ func main() {
 			fmt.Println("Min value:", min_val, "Max value:", max_val)
 		}
 		// Save to out.png
-		filename := fmt.Sprintf("pics/eval_%03d.png", i_img)
+		// filename := output_dir + fmt.Sprintf("eval_%03d.png", i_img)
+		filename := fmt.Sprintf(output_dir+"/"+fname_pattern, i_img)
 		out, err := os.Create(filename)
 		if err != nil {
 			panic(err)
@@ -317,13 +339,70 @@ func main() {
 	}
 
 	// write object to JSON or YAML
-	data, err := json.MarshalIndent(lat.ToMap(), "", "  ")
-	// data, err = yaml.Marshal(lat.ToMap())
+	// data, err := json.MarshalIndent(lat.ToMap(), "", "  ")
+	data, err := yaml.Marshal(lat.ToMap())
 	if err != nil {
 		fmt.Println("Error marshalling object:", err)
 	}
-	err = os.WriteFile("object.json", data, 0644)
+	err = os.WriteFile("object.yaml", data, 0644)
 	if err != nil {
 		fmt.Println("Error writing file:", err)
+	}
+}
+
+func main() {
+	app := &cli.App{
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "output_dir",
+				Usage: "Output directory to save the images",
+				Value: "images",
+			},
+			&cli.StringFlag{
+				Name:     "input",
+				Usage:    "Input yaml file describing the object",
+				Required: true,
+			},
+			&cli.IntFlag{
+				Name:  "num_projections",
+				Usage: "Number of projections to generate",
+				Value: 16,
+			},
+			&cli.IntFlag{
+				Name:  "resolution",
+				Usage: "Resolution of the square output images",
+				Value: 512,
+			},
+			&cli.BoolFlag{
+				Name:  "out_of_plane",
+				Usage: "Generate out of plane projections",
+			},
+			&cli.StringFlag{
+				Name:  "fname_pattern",
+				Usage: "Sprintf pattern for output file name",
+				Value: "image_%03d.png",
+			},
+			&cli.Float64Flag{
+				Name:  "ds",
+				Usage: "Integration step size. If negative, try to infer from smallest feature size in the input file",
+				Value: -1.0,
+			},
+		},
+		Action: func(cCtx *cli.Context) error {
+			render(
+				cCtx.String("input"),
+				cCtx.String("output_dir"),
+				cCtx.String("fname_pattern"),
+				cCtx.Int("resolution"),
+				cCtx.Int("num_projections"),
+				cCtx.Bool("out_of_plane"),
+				cCtx.Float64("ds"),
+			)
+			return nil
+		},
+	}
+
+	if err := app.Run(os.Args); err != nil {
+		log.Fatal(err)
 	}
 }
