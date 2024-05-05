@@ -10,7 +10,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"time"
 
@@ -23,7 +22,6 @@ import (
 )
 
 const flat_field = 0.0
-const NUM_JOBS = 1
 
 // func make_object() objects.Lattice {
 // 	var kelvin_uc = objects.MakeKelvin(0.075, 0.8)
@@ -57,7 +55,7 @@ const NUM_JOBS = 1
 // 	return lat
 // }
 
-func load_object(fn string) objects.ObjectCollection {
+func load_object(fn string) error {
 	log.Info().Msgf("Loading object from '%s'", fn)
 	data, err := os.ReadFile(fn)
 	if err != nil {
@@ -79,21 +77,41 @@ func load_object(fn string) objects.ObjectCollection {
 	default:
 		fmt.Println("Unknown file extension:", ext)
 	}
-	objcoll := objects.ObjectCollection{}
-	err = objcoll.FromMap(out)
+	// based on the type of object, convert to the appropriate object
+	var obj objects.Object
+	switch out["type"] {
+	case "tessellated_obj_coll":
+		obj = &objects.TessellatedObjColl{}
+	case "object_collection":
+		obj = &objects.ObjectCollection{}
+	case "sphere":
+		obj = &objects.Sphere{}
+	case "cube":
+		obj = &objects.Cube{}
+	case "cylinder":
+		obj = &objects.Cylinder{}
+	default:
+		log.Fatal().Msgf("Unknown object type: %v", out["type"])
+	}
+	err = obj.FromMap(out)
+	lat = append(lat, obj)
 	if err != nil {
 		log.Error().Msgf("Error converting to object collection: %v", err)
 	}
-	return objcoll
+	return err
 }
 
 func make_object() objects.TessellatedObjColl {
 	uc := objects.MakeKelvin(0.03, 0.5)
-	lat := objects.TessellatedObjColl{UC: uc, Xmin: -1.0, Xmax: 1.0, Ymin: -1.0, Ymax: 1.0, Zmin: -1.0, Zmax: 1.0}
+	lat := objects.TessellatedObjColl{UC: uc, Xmin: -1.02, Xmax: 1.02, Ymin: -1.02, Ymax: 1.02, Zmin: -1.02, Zmax: 1.02}
 	return lat
 }
 
-var lat = objects.ObjectCollection{}
+var lat = []objects.Object{}
+
+// var lat = make([]objects.TessellatedObjColl, 1)
+
+// var lat = make_object()
 var integrate = integrate_along_ray
 
 func deform(x, y, z float64) (float64, float64, float64) {
@@ -106,7 +124,7 @@ func deform(x, y, z float64) (float64, float64, float64) {
 
 func density(x, y, z float64) float64 {
 	// x, y, z = deform(x, y, z)
-	return lat.Density(x, y, z)
+	return lat[0].Density(x, y, z)
 }
 
 func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) float64 {
@@ -203,17 +221,18 @@ func render(
 	ds float64,
 	R float64,
 	fov float64,
+	jobs_modulo int,
+	job_num int,
+	transforms_file string,
 ) {
 	defer timer()()
 	wrt := os.Stdout
-	job, err := strconv.Atoi(os.Getenv("NUM_MOD_DIV"))
-	if err != nil {
-		fmt.Println("Error converting job number to integer:", err)
-		job = 0
-	}
-	fmt.Println("Job:", job)
 
-	lat = load_object(input)
+	load_object(input) // modify global variable lat
+	// assert len(lat)==1
+	if len(lat) != 1 {
+		log.Fatal().Msgf("Expected 1 object, got %d", len(lat))
+	}
 	// create output directory if it doesn't exist
 	if _, err := os.Stat(output_dir); os.IsNotExist(err) {
 		log.Info().Msgf("Creating output directory '%s'", output_dir)
@@ -223,7 +242,7 @@ func render(
 	}
 	// set or compute ds
 	if ds < 0 {
-		ds = lat.MinFeatureSize() / 10.0
+		ds = lat[0].MinFeatureSize() / 10.0
 		log.Info().Msgf("Setting ds to %f", ds)
 	}
 
@@ -233,6 +252,7 @@ func render(
 		log.Info().Msg("Fixed polar angle at 90 degrees")
 	}
 	log.Info().Msgf("Generating %d images at resolution %d", num_images, res)
+	log.Info().Msgf("Will render every %dth projection starting from %d", jobs_modulo, job_num)
 	res_f := float64(res)
 
 	img := make([][]float64, res)
@@ -258,7 +278,7 @@ func render(
 	t0 := time.Now()
 
 	for i_img := 0; i_img < num_images; i_img++ {
-		if i_img%NUM_JOBS != job {
+		if i_img%jobs_modulo != job_num {
 			continue
 		}
 		s = fmt.Sprintf("%3d/%3d [", i_img, num_images)
@@ -308,7 +328,7 @@ func render(
 				wg.Add(1)
 				vx := mgl64.Vec3{float64(i)/(res_f/2) - 1, float64(j)/(res_f/2) - 1, -f}
 				vx = mgl64.TransformCoordinate(vx, camera)
-				go computePixel(&img, i, j, origin, vx.Sub(origin), ds, R-1.41, R+1.41, &wg)
+				go computePixel(img, i, j, eye, vx.Sub(eye), ds, R-1.41, R+1.41, &wg)
 				if (i*res+j)%(pix_step) == 0 {
 					wrt.Write([]byte("-"))
 				}
@@ -350,7 +370,7 @@ func render(
 		png.Encode(out, myImage)
 		out.Close()
 
-		transform_params.Frames = append(transform_params.Frames, OneParam{FilePath: filename, TransformMatrix: rows})
+		transform_params.Frames = append(transform_params.Frames, OneParam{FilePath: filepath.ToSlash(filename), TransformMatrix: rows})
 	}
 
 	// write transform parameters to JSON
@@ -358,15 +378,15 @@ func render(
 	if err != nil {
 		fmt.Println("Error marshalling to JSON:", err)
 	}
-	log.Info().Msg("Writing transform parameters to 'transforms.json'")
-	err = os.WriteFile(fmt.Sprintf("transforms_eval%d.json", job), jsonData, 0644)
+	log.Info().Msgf("Writing transform parameters to '%s'", transforms_file)
+	err = os.WriteFile(transforms_file, jsonData, 0644)
 	if err != nil {
 		fmt.Println("Error writing JSON to file:", err)
 	}
 
 	// write object to JSON or YAML
 	// data, err := json.MarshalIndent(lat.ToMap(), "", "  ")
-	data, err := yaml.Marshal(lat.ToMap())
+	data, err := yaml.Marshal(lat[0].ToMap())
 	if err != nil {
 		fmt.Println("Error marshalling object:", err)
 	}
@@ -425,11 +445,26 @@ func main() {
 				Value: 45.0,
 			},
 			&cli.StringFlag{
-				Name: "integration",
-				Usage: "Integration method to use. Options are 'simple' or 'hierarchical'. " +
-					"Simple method integrates along the ray in fixed steps. " +
-					"Hierarchical method uses a sliding window to integrate along the ray.",
+				Name:  "integration",
+				Usage: "Integration method to use. Options are 'simple' or 'hierarchical'. ",
 				Value: "hierarchical",
+			},
+			&cli.IntFlag{
+				Name: "jobs_modulo",
+				Usage: "Number of jobs which are being run independently" +
+					" (e.g. jobs_modulo=4 will render every 4th projection)",
+				Value: 1,
+			},
+			&cli.IntFlag{
+				Name: "job",
+				Usage: "Job number to run" +
+					" (e.g. job=1 with jobs_modulo=4 will render projections 1, 5, 9, ...)",
+				Value: 0,
+			},
+			&cli.StringFlag{
+				Name:  "transforms_file",
+				Usage: "Output file to save the transform parameters",
+				Value: "transforms.json",
 			},
 			// verbose flag
 			&cli.BoolFlag{
@@ -463,6 +498,9 @@ func main() {
 				cCtx.Float64("ds"),
 				cCtx.Float64("R"),
 				cCtx.Float64("fov"),
+				cCtx.Int("jobs_modulo"),
+				cCtx.Int("job"),
+				cCtx.String("transforms_file"),
 			)
 			return nil
 		},

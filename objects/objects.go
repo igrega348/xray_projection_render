@@ -113,6 +113,17 @@ func (c *Cube) MinFeatureSize() float64 {
 	return c.Side
 }
 
+func ToFloat64(data interface{}) (float64, error) {
+	switch t := data.(type) {
+	case int:
+		return float64(t), nil
+	case float64:
+		return t, nil
+	default:
+		return 0.0, fmt.Errorf("data is not a float64")
+	}
+}
+
 func ToVec(data *[]interface{}, vec *mgl64.Vec3) error {
 	for i, val := range *data {
 		switch t := val.(type) {
@@ -163,7 +174,7 @@ func (c *Cylinder) FromMap(data map[string]interface{}) error {
 	if c.Radius, ok = data["radius"].(float64); !ok {
 		return fmt.Errorf("radius is not a float64")
 	}
-	if c.Rho, ok = data["rho"].(float64); !ok {
+	if c.Rho, err = ToFloat64(data["rho"]); err != nil {
 		return fmt.Errorf("rho is not a float64")
 	}
 	return nil
@@ -192,7 +203,9 @@ func (cyl *Cylinder) MinFeatureSize() float64 {
 }
 
 type ObjectCollection struct {
-	Objects []Object
+	Object
+	Objects        []Object
+	GreedyDensEval bool
 }
 
 func (oc *ObjectCollection) ToMap() map[string]interface{} {
@@ -244,7 +257,11 @@ func (oc *ObjectCollection) FromMap(data map[string]interface{}) error {
 func (oc *ObjectCollection) Density(x, y, z float64) float64 {
 	var density float64
 	for _, object := range oc.Objects {
-		density += object.Density(x, y, z)
+		rho := object.Density(x, y, z)
+		if oc.GreedyDensEval && rho > 0.0 {
+			return rho
+		}
+		density += rho
 	}
 	// clip between 0 and 1
 	if density < 0.0 {
@@ -291,38 +308,40 @@ func (uc *UnitCell) ToMap() map[string]interface{} {
 }
 
 func (uc *UnitCell) FromMap(data map[string]interface{}) error {
-	var ok bool
+	var err error
 	if struts_data, ok := data["struts"].(map[string]interface{}); ok {
 		struts := ObjectCollection{}
 		if err := struts.FromMap(struts_data); err != nil {
 			return err
 		}
 		uc.Struts = struts
+		uc.Struts.GreedyDensEval = true
 	} else {
 		return fmt.Errorf("struts is not a map")
 	}
-	if uc.Xmin, ok = data["xmin"].(float64); !ok {
+	if uc.Xmin, err = ToFloat64(data["xmin"]); err != nil {
 		return fmt.Errorf("xmin is not a float64")
 	}
-	if uc.Xmax, ok = data["xmax"].(float64); !ok {
+	if uc.Xmax, err = ToFloat64(data["xmax"]); err != nil {
 		return fmt.Errorf("xmax is not a float64")
 	}
-	if uc.Ymin, ok = data["ymin"].(float64); !ok {
+	if uc.Ymin, err = ToFloat64(data["ymin"]); err != nil {
 		return fmt.Errorf("ymin is not a float64")
 	}
-	if uc.Ymax, ok = data["ymax"].(float64); !ok {
+	if uc.Ymax, err = ToFloat64(data["ymax"]); err != nil {
 		return fmt.Errorf("ymax is not a float64")
 	}
-	if uc.Zmin, ok = data["zmin"].(float64); !ok {
+	if uc.Zmin, err = ToFloat64(data["zmin"]); err != nil {
 		return fmt.Errorf("zmin is not a float64")
 	}
-	if uc.Zmax, ok = data["zmax"].(float64); !ok {
+	if uc.Zmax, err = ToFloat64(data["zmax"]); err != nil {
 		return fmt.Errorf("zmax is not a float64")
 	}
 	return nil
 }
 
 type TessellatedObjColl struct {
+	Object
 	// lattice is given by unit cell and bounds for tessellation
 	UC                                 UnitCell
 	Xmin, Xmax, Ymin, Ymax, Zmin, Zmax float64
@@ -330,7 +349,7 @@ type TessellatedObjColl struct {
 
 func (l *TessellatedObjColl) ToMap() map[string]interface{} {
 	return map[string]interface{}{
-		"type": "lattice",
+		"type": "tessellated_obj_coll",
 		"uc":   l.UC.ToMap(),
 		"xmin": l.Xmin,
 		"xmax": l.Xmax,
@@ -342,7 +361,7 @@ func (l *TessellatedObjColl) ToMap() map[string]interface{} {
 }
 
 func (l *TessellatedObjColl) FromMap(data map[string]interface{}) error {
-	var ok bool
+	var err error
 	if uc_data, ok := data["uc"].(map[string]interface{}); ok {
 		uc := UnitCell{}
 		if err := uc.FromMap(uc_data); err != nil {
@@ -352,22 +371,22 @@ func (l *TessellatedObjColl) FromMap(data map[string]interface{}) error {
 	} else {
 		return fmt.Errorf("uc is not a map")
 	}
-	if l.Xmin, ok = data["xmin"].(float64); !ok {
+	if l.Xmin, err = ToFloat64(data["xmin"]); err != nil {
 		return fmt.Errorf("xmin is not a float64")
 	}
-	if l.Xmax, ok = data["xmax"].(float64); !ok {
+	if l.Xmax, err = ToFloat64(data["xmax"]); err != nil {
 		return fmt.Errorf("xmax is not a float64")
 	}
-	if l.Ymin, ok = data["ymin"].(float64); !ok {
+	if l.Ymin, err = ToFloat64(data["ymin"]); err != nil {
 		return fmt.Errorf("ymin is not a float64")
 	}
-	if l.Ymax, ok = data["ymax"].(float64); !ok {
+	if l.Ymax, err = ToFloat64(data["ymax"]); err != nil {
 		return fmt.Errorf("ymax is not a float64")
 	}
-	if l.Zmin, ok = data["zmin"].(float64); !ok {
+	if l.Zmin, err = ToFloat64(data["zmin"]); err != nil {
 		return fmt.Errorf("zmin is not a float64")
 	}
-	if l.Zmax, ok = data["zmax"].(float64); !ok {
+	if l.Zmax, err = ToFloat64(data["zmax"]); err != nil {
 		return fmt.Errorf("zmax is not a float64")
 	}
 	return nil
@@ -387,6 +406,10 @@ func (l *TessellatedObjColl) Density(x, y, z float64) float64 {
 		z = z - dz*math.Floor((z-l.UC.Zmin)/dz)
 		return l.UC.Density(x, y, z)
 	}
+}
+
+func (l *TessellatedObjColl) MinFeatureSize() float64 {
+	return l.UC.Struts.MinFeatureSize()
 }
 
 func MakeKelvin(rad float64, scale float64) UnitCell {
@@ -436,7 +459,7 @@ func MakeKelvin(rad float64, scale float64) UnitCell {
 	for i, strut := range struts {
 		objects[i] = &strut
 	}
-	uc := UnitCell{Struts: ObjectCollection{Objects: objects}, Xmin: 0.0, Xmax: 1.0 * scale, Ymin: 0.0, Ymax: 1.0 * scale, Zmin: 0.0, Zmax: 1.0 * scale}
+	uc := UnitCell{Struts: ObjectCollection{Objects: objects, GreedyDensEval: true}, Xmin: 0.0, Xmax: 1.0 * scale, Ymin: 0.0, Ymax: 1.0 * scale, Zmin: 0.0, Zmax: 1.0 * scale}
 	return uc
 }
 
