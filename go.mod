@@ -1,4 +1,4 @@
-module github.com/igrega348/sphere_render
+module github.com/igrega348/xray_projection_render
 
 go 1.22.1
 

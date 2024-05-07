@@ -14,46 +14,18 @@ import (
 	"time"
 
 	"github.com/go-gl/mathgl/mgl64"
-	"github.com/igrega348/sphere_render/objects"
+	"github.com/igrega348/xray_projection_render/objects"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli"
 	"gopkg.in/yaml.v3"
 )
 
+var lat = []objects.Object{}
+var density_multiplier = 1.0
+var integrate = integrate_along_ray
+
 const flat_field = 0.0
-
-// func make_object() objects.Lattice {
-// 	var kelvin_uc = objects.MakeKelvin(0.075, 0.8)
-// 	// return kelvin_uc.Tesselate(4, 4, 4)
-// 	return kelvin_uc
-// }
-
-// func load_object() objects.Lattice {
-// 	fn := "lattice.yaml"
-// 	data, err := os.ReadFile(fn)
-// 	if err != nil {
-// 		fmt.Println("Error reading file:", err)
-// 	}
-// 	out := map[string]interface{}{}
-// 	err = yaml.Unmarshal(data, &out)
-// 	if err != nil {
-// 		fmt.Println("Error unmarshalling YAML to map", err)
-// 	}
-// 	lat := objects.Lattice{}
-// 	err = lat.FromMap(out)
-// 	if err != nil {
-// 		fmt.Println("Error converting to lattice:", err)
-// 	}
-// 	if out["tessellate"] != nil {
-// 		nx := out["tessellate"].([]interface{})[0].(int)
-// 		ny := out["tessellate"].([]interface{})[1].(int)
-// 		nz := out["tessellate"].([]interface{})[2].(int)
-// 		lat = lat.Tesselate(nx, ny, nz)
-// 	}
-// 	fmt.Println("Lattice loaded")
-// 	return lat
-// }
 
 func load_object(fn string) error {
 	log.Info().Msgf("Loading object from '%s'", fn)
@@ -107,13 +79,6 @@ func make_object() objects.TessellatedObjColl {
 	return lat
 }
 
-var lat = []objects.Object{}
-
-// var lat = make([]objects.TessellatedObjColl, 1)
-
-// var lat = make_object()
-var integrate = integrate_along_ray
-
 func deform(x, y, z float64) (float64, float64, float64) {
 	// Try Gaussian displacement field
 	A := 0.05
@@ -124,7 +89,7 @@ func deform(x, y, z float64) (float64, float64, float64) {
 
 func density(x, y, z float64) float64 {
 	// x, y, z = deform(x, y, z)
-	return lat[0].Density(x, y, z)
+	return lat[0].Density(x, y, z) * density_multiplier
 }
 
 func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) float64 {
@@ -242,7 +207,7 @@ func render(
 	}
 	// set or compute ds
 	if ds < 0 {
-		ds = lat[0].MinFeatureSize() / 10.0
+		ds = lat[0].MinFeatureSize() / 2.0
 		log.Info().Msgf("Setting ds to %f", ds)
 	}
 
@@ -328,7 +293,7 @@ func render(
 				wg.Add(1)
 				vx := mgl64.Vec3{float64(i)/(res_f/2) - 1, float64(j)/(res_f/2) - 1, -f}
 				vx = mgl64.TransformCoordinate(vx, camera)
-				go computePixel(img, i, j, eye, vx.Sub(eye), ds, R-1.41, R+1.41, &wg)
+				go computePixel(img, i, j, eye, vx.Sub(eye), ds, R-1.74, R+1.74, &wg)
 				if (i*res+j)%(pix_step) == 0 {
 					wrt.Write([]byte("-"))
 				}
@@ -466,6 +431,11 @@ func main() {
 				Usage: "Output file to save the transform parameters",
 				Value: "transforms.json",
 			},
+			&cli.Float64Flag{
+				Name:  "density_multiplier",
+				Usage: "Multiply all densities by this number",
+				Value: 1.0,
+			},
 			// verbose flag
 			&cli.BoolFlag{
 				Name:  "v",
@@ -488,6 +458,7 @@ func main() {
 			} else {
 				log.Fatal().Msgf("Unknown integration method: %s", cCtx.String("integration"))
 			}
+			density_multiplier = cCtx.Float64("density_multiplier")
 			render(
 				cCtx.String("input"),
 				cCtx.String("output_dir"),
