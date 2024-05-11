@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/go-gl/mathgl/mgl64"
+	"github.com/igrega348/xray_projection_render/deformations"
 	"github.com/igrega348/xray_projection_render/objects"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -25,7 +26,39 @@ var lat = []objects.Object{}
 var density_multiplier = 1.0
 var integrate = integrate_along_ray
 
+// var gaussian_deformation = deformations.NewDeformation("gaussian") //.(*deformations.GaussianDeformation)
+var gaussian_deformation = deformations.GaussianDeformation{}
+
 const flat_field = 0.0
+
+func load_deformation(fn string) error {
+	log.Info().Msgf("Loading deformation from '%s'", fn)
+	data, err := os.ReadFile(fn)
+	if err != nil {
+		log.Fatal().Err(err)
+	}
+	// out := map[string]interface{}{}
+	// can have either yaml or json based on file extension via switch
+	switch ext := fn[len(fn)-4:]; ext {
+	case "yaml":
+		err = yaml.Unmarshal(data, &gaussian_deformation)
+		// err = yaml.Unmarshal(data, &out)
+		if err != nil {
+			log.Error().Msgf("Error unmarshalling YAML: %v", err)
+		}
+	case "json":
+		err = json.Unmarshal(data, &gaussian_deformation)
+		// err = json.Unmarshal(data, &out)
+		if err != nil {
+			log.Error().Msgf("Error unmarshalling JSON: %v", err)
+		}
+	default:
+		fmt.Println("Unknown file extension:", ext)
+	}
+	// based on the type of object, convert to the appropriate object
+	// err = gaussian_deformation.FromMap(out)
+	return err
+}
 
 func load_object(fn string) error {
 	log.Info().Msgf("Loading object from '%s'", fn)
@@ -81,14 +114,17 @@ func make_object() objects.TessellatedObjColl {
 
 func deform(x, y, z float64) (float64, float64, float64) {
 	// Try Gaussian displacement field
-	A := 0.05
-	sigma := 0.2
-	y = y - A*math.Exp(-(x*x+y*y+z*z)/(2*sigma*sigma))
+	// A := 0.05
+	// sigma := 0.2
+	// y = y - A*math.Exp(-(x*x+y*y+z*z)/(2*sigma*sigma))
+	// linear deformation field
+	// z = z + 0.3*z // this will be compression in z
+	x, y, z = gaussian_deformation.Apply(x, y, z)
 	return x, y, z
 }
 
 func density(x, y, z float64) float64 {
-	// x, y, z = deform(x, y, z)
+	x, y, z = deform(x, y, z)
 	return lat[0].Density(x, y, z) * density_multiplier
 }
 
@@ -197,6 +233,10 @@ func render(
 	// assert len(lat)==1
 	if len(lat) != 1 {
 		log.Fatal().Msgf("Expected 1 object, got %d", len(lat))
+	}
+	err := load_deformation("deformation.yaml")
+	if err != nil {
+		log.Fatal().Msgf("Error loading deformation: %v", err)
 	}
 	// create output directory if it doesn't exist
 	if _, err := os.Stat(output_dir); os.IsNotExist(err) {
@@ -378,7 +418,7 @@ func main() {
 			&cli.IntFlag{
 				Name:  "num_projections",
 				Usage: "Number of projections to generate",
-				Value: 16,
+				Value: 1,
 			},
 			&cli.IntFlag{
 				Name:  "resolution",

@@ -22,3 +22,6 @@ go.work
 
 # Output image files
 *.png
+
+# PAT
+pat*
