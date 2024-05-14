@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,40 +24,54 @@ import (
 )
 
 var lat = []objects.Object{}
+var df = []deformations.Deformation{}
 var density_multiplier = 1.0
 var integrate = integrate_along_ray
-
-// var gaussian_deformation = deformations.NewDeformation("gaussian") //.(*deformations.GaussianDeformation)
-var gaussian_deformation = deformations.GaussianDeformation{}
 
 const flat_field = 0.0
 
 func load_deformation(fn string) error {
+	if len(fn) == 0 {
+		log.Info().Msg("No deformation file provided")
+		return nil
+	}
 	log.Info().Msgf("Loading deformation from '%s'", fn)
 	data, err := os.ReadFile(fn)
 	if err != nil {
 		log.Fatal().Err(err)
 	}
-	// out := map[string]interface{}{}
+	var obj deformations.Deformation
+	if strings.Contains(string(data), "gaussian") {
+		obj = &deformations.GaussianDeformation{}
+	} else if strings.Contains(string(data), "linear") {
+		obj = &deformations.LinearDeformation{}
+	} else if strings.Contains(string(data), "rigid") {
+		obj = &deformations.RigidDeformation{}
+	} else {
+		log.Fatal().Msg("Unknown deformation type")
+	}
+	out := map[string]interface{}{}
 	// can have either yaml or json based on file extension via switch
 	switch ext := fn[len(fn)-4:]; ext {
 	case "yaml":
-		err = yaml.Unmarshal(data, &gaussian_deformation)
-		// err = yaml.Unmarshal(data, &out)
+		err = yaml.Unmarshal(data, &out)
 		if err != nil {
 			log.Error().Msgf("Error unmarshalling YAML: %v", err)
 		}
 	case "json":
-		err = json.Unmarshal(data, &gaussian_deformation)
-		// err = json.Unmarshal(data, &out)
+		err = json.Unmarshal(data, &out)
 		if err != nil {
 			log.Error().Msgf("Error unmarshalling JSON: %v", err)
 		}
 	default:
 		fmt.Println("Unknown file extension:", ext)
 	}
-	// based on the type of object, convert to the appropriate object
-	// err = gaussian_deformation.FromMap(out)
+	err = obj.FromMap(out)
+	if err != nil {
+		log.Fatal().Msgf("Error converting to deformation: %v", err)
+	}
+	log.Info().Msgf("Deformation: %v", obj)
+	df = append(df, obj)
 	return err
 }
 
@@ -113,14 +128,15 @@ func make_object() objects.TessellatedObjColl {
 }
 
 func deform(x, y, z float64) (float64, float64, float64) {
-	// Try Gaussian displacement field
-	// A := 0.05
-	// sigma := 0.2
-	// y = y - A*math.Exp(-(x*x+y*y+z*z)/(2*sigma*sigma))
-	// linear deformation field
-	// z = z + 0.3*z // this will be compression in z
-	x, y, z = gaussian_deformation.Apply(x, y, z)
-	return x, y, z
+	if len(df) == 0 {
+		return x, y, z
+	} else if len(df) == 1 {
+		x, y, z = df[0].Apply(x, y, z)
+		return x, y, z
+	} else {
+		log.Fatal().Msg("Multiple deformations not supported")
+		return x, y, z
+	}
 }
 
 func density(x, y, z float64) float64 {
@@ -200,6 +216,7 @@ func timer() func() {
 type OneParam struct {
 	FilePath        string      `json:"file_path"`
 	TransformMatrix [][]float64 `json:"transform_matrix"`
+	Time            int         `json:"time"`
 }
 type TransformParams struct {
 	CameraAngle float64    `json:"camera_angle_x"`
@@ -225,16 +242,17 @@ func render(
 	jobs_modulo int,
 	job_num int,
 	transforms_file string,
+	deformation_file string,
+	time_label int,
 ) {
 	defer timer()()
 	wrt := os.Stdout
 
 	load_object(input) // modify global variable lat
-	// assert len(lat)==1
 	if len(lat) != 1 {
 		log.Fatal().Msgf("Expected 1 object, got %d", len(lat))
 	}
-	err := load_deformation("deformation.yaml")
+	err := load_deformation(deformation_file) // modify global variable df
 	if err != nil {
 		log.Fatal().Msgf("Error loading deformation: %v", err)
 	}
@@ -375,7 +393,7 @@ func render(
 		png.Encode(out, myImage)
 		out.Close()
 
-		transform_params.Frames = append(transform_params.Frames, OneParam{FilePath: filepath.ToSlash(filename), TransformMatrix: rows})
+		transform_params.Frames = append(transform_params.Frames, OneParam{FilePath: filepath.ToSlash(filename), TransformMatrix: rows, Time: time_label})
 	}
 
 	// write transform parameters to JSON
@@ -476,6 +494,16 @@ func main() {
 				Usage: "Multiply all densities by this number",
 				Value: 1.0,
 			},
+			&cli.StringFlag{
+				Name:  "deformation_file",
+				Usage: "File containing deformation parameters",
+				Value: "",
+			},
+			&cli.IntFlag{
+				Name:  "time_label",
+				Usage: "Label to pass to image metadata",
+				Value: 0,
+			},
 			// verbose flag
 			&cli.BoolFlag{
 				Name:  "v",
@@ -512,6 +540,8 @@ func main() {
 				cCtx.Int("jobs_modulo"),
 				cCtx.Int("job"),
 				cCtx.String("transforms_file"),
+				cCtx.String("deformation_file"),
+				cCtx.Int("time_label"),
 			)
 			return nil
 		},
