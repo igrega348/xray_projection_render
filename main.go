@@ -27,6 +27,8 @@ var df = []deformations.Deformation{}
 var density_multiplier = 1.0
 var integrate = integrate_along_ray
 var flat_field = 0.0
+var warned_clipping_max = false
+var warned_clipping_min = false
 
 func load_deformation(fn string) error {
 	if len(fn) == 0 {
@@ -153,11 +155,13 @@ func integrate_hierarchical(origin, direction mgl64.Vec3, DS, smin, smax float64
 	// normalize components of the ray
 	direction = direction.Normalize()
 	// check clipping
-	if density(origin[0]+direction[0]*smin, origin[1]+direction[1]*smin, origin[2]+direction[2]*smin) > 0 {
+	if density(origin[0]+direction[0]*smin, origin[1]+direction[1]*smin, origin[2]+direction[2]*smin) > 0 && !warned_clipping_min {
 		log.Warn().Msg("Clipping at smin detected")
+		warned_clipping_min = true
 	}
-	if density(origin[0]+direction[0]*smax, origin[1]+direction[1]*smax, origin[2]+direction[2]*smax) > 0 {
+	if density(origin[0]+direction[0]*smax, origin[1]+direction[1]*smax, origin[2]+direction[2]*smax) > 0 && !warned_clipping_max {
 		log.Warn().Msg("Clipping at smax detected")
+		warned_clipping_max = true
 	}
 	// integrate using sliding window
 	right := smin + DS
