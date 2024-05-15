@@ -243,6 +243,12 @@ func (oc *ObjectCollection) FromMap(data map[string]interface{}) error {
 					return err
 				}
 				objects[i] = &object
+			case "tessellated_obj_coll":
+				object := TessellatedObjColl{}
+				if err := object.FromMap(object_data.(map[string]interface{})); err != nil {
+					return err
+				}
+				objects[i] = &object
 			default:
 				return fmt.Errorf("unknown object type")
 			}

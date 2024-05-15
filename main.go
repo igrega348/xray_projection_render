@@ -27,8 +27,7 @@ var lat = []objects.Object{}
 var df = []deformations.Deformation{}
 var density_multiplier = 1.0
 var integrate = integrate_along_ray
-
-const flat_field = 0.0
+var flat_field = 0.0
 
 func load_deformation(fn string) error {
 	if len(fn) == 0 {
@@ -216,7 +215,7 @@ func timer() func() {
 type OneParam struct {
 	FilePath        string      `json:"file_path"`
 	TransformMatrix [][]float64 `json:"transform_matrix"`
-	Time            int         `json:"time"`
+	Time            float64     `json:"time"`
 }
 type TransformParams struct {
 	CameraAngle float64    `json:"camera_angle_x"`
@@ -243,7 +242,7 @@ func render(
 	job_num int,
 	transforms_file string,
 	deformation_file string,
-	time_label int,
+	time_label float64,
 ) {
 	defer timer()()
 	wrt := os.Stdout
@@ -408,13 +407,13 @@ func render(
 	}
 
 	// write object to JSON or YAML
-	// data, err := json.MarshalIndent(lat.ToMap(), "", "  ")
-	data, err := yaml.Marshal(lat[0].ToMap())
+	data, err := json.MarshalIndent(lat[0].ToMap(), "", "  ")
+	// data, err := yaml.Marshal(lat[0].ToMap())
 	if err != nil {
 		fmt.Println("Error marshalling object:", err)
 	}
-	log.Info().Msg("Writing object to 'object.yaml'")
-	err = os.WriteFile("object.yaml", data, 0644)
+	log.Info().Msg("Writing object to 'object.json'")
+	err = os.WriteFile("object.json", data, 0644)
 	if err != nil {
 		fmt.Println("Error writing file:", err)
 	}
@@ -472,6 +471,11 @@ func main() {
 				Usage: "Integration method to use. Options are 'simple' or 'hierarchical'. ",
 				Value: "hierarchical",
 			},
+			&cli.Float64Flag{
+				Name:  "flat_field",
+				Usage: "Flat field value to add to all pixels",
+				Value: 0.0,
+			},
 			&cli.IntFlag{
 				Name: "jobs_modulo",
 				Usage: "Number of jobs which are being run independently" +
@@ -499,10 +503,10 @@ func main() {
 				Usage: "File containing deformation parameters",
 				Value: "",
 			},
-			&cli.IntFlag{
+			&cli.Float64Flag{
 				Name:  "time_label",
 				Usage: "Label to pass to image metadata",
-				Value: 0,
+				Value: 0.0,
 			},
 			// verbose flag
 			&cli.BoolFlag{
@@ -526,6 +530,7 @@ func main() {
 			} else {
 				log.Fatal().Msgf("Unknown integration method: %s", cCtx.String("integration"))
 			}
+			flat_field = cCtx.Float64("flat_field")
 			density_multiplier = cCtx.Float64("density_multiplier")
 			render(
 				cCtx.String("input"),
@@ -541,7 +546,7 @@ func main() {
 				cCtx.Int("job"),
 				cCtx.String("transforms_file"),
 				cCtx.String("deformation_file"),
-				cCtx.Int("time_label"),
+				cCtx.Float64("time_label"),
 			)
 			return nil
 		},
