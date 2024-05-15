@@ -2,6 +2,7 @@ package deformations
 
 import (
 	"fmt"
+	"log"
 	"math"
 )
 
@@ -126,4 +127,99 @@ func (r *RigidDeformation) FromMap(data map[string]interface{}) error {
 	}
 	r.Type = data["type"].(string)
 	return nil
+}
+
+type SigmoidDeformation struct {
+	Deformation
+	Amplitude   float64
+	Center      float64
+	Lengthscale float64
+	Direction   string
+	Type        string
+}
+
+func (s *SigmoidDeformation) Apply(x, y, z float64) (float64, float64, float64) {
+	switch s.Direction {
+	case "x":
+		return x + s.Amplitude/(1+math.Exp(-(x-s.Center)/s.Lengthscale)), y, z
+	case "y":
+		return x, y + s.Amplitude/(1+math.Exp(-(y-s.Center)/s.Lengthscale)), z
+	case "z":
+		return x, y, z + s.Amplitude/(1+math.Exp(-(z-s.Center)/s.Lengthscale))
+	default:
+		log.Fatal("Invalid direction")
+		return 0, 0, 0
+	}
+}
+
+func (s *SigmoidDeformation) ToMap() map[string]interface{} {
+	return map[string]interface{}{
+		"amplitude":   s.Amplitude,
+		"center":      s.Center,
+		"lengthscale": s.Lengthscale,
+		"direction":   s.Direction,
+		"type":        s.Type,
+	}
+}
+
+func (s *SigmoidDeformation) FromMap(data map[string]interface{}) error {
+	// check if the data is valid
+	var ok bool
+	var err error
+	if s.Amplitude, err = toFloat64(data["amplitude"]); err != nil {
+		return fmt.Errorf("amplitude must be a float")
+	}
+	if s.Center, err = toFloat64(data["center"]); err != nil {
+		return fmt.Errorf("center must be a float")
+	}
+	if s.Lengthscale, err = toFloat64(data["lengthscale"]); err != nil {
+		return fmt.Errorf("lengthscale must be a float")
+	}
+	if s.Direction, ok = data["direction"].(string); !ok {
+		return fmt.Errorf("direction must be a string")
+	}
+	if s.Type, ok = data["type"].(string); !ok {
+		return fmt.Errorf("type must be a string")
+	}
+	return nil
+}
+
+type DeformationFactory struct{}
+
+func (f *DeformationFactory) Create(data map[string]interface{}) (Deformation, error) {
+	return NewDeformation(data)
+}
+
+func NewDeformation(data map[string]interface{}) (Deformation, error) {
+	switch data["type"] {
+	case "gaussian":
+		g := &GaussianDeformation{}
+		err := g.FromMap(data)
+		return g, err
+	case "linear":
+		l := &LinearDeformation{}
+		err := l.FromMap(data)
+		return l, err
+	case "rigid":
+		r := &RigidDeformation{}
+		err := r.FromMap(data)
+		return r, err
+	case "sigmoid":
+		s := &SigmoidDeformation{}
+		err := s.FromMap(data)
+		return s, err
+	default:
+		return nil, fmt.Errorf("unknown deformation type")
+	}
+}
+
+func toFloat64(data interface{}) (float64, error) {
+	switch t := data.(type) {
+	case int:
+		return float64(t), nil
+	case float64:
+		return t, nil
+	default:
+		return 0.0, fmt.Errorf("data is not a float64")
+	}
 }

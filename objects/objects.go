@@ -70,6 +70,7 @@ type Cube struct {
 	Center mgl64.Vec3
 	Side   float64
 	Rho    float64
+	Box    Box
 }
 
 func (c *Cube) ToMap() map[string]interface{} {
@@ -96,21 +97,70 @@ func (c *Cube) FromMap(data map[string]interface{}) error {
 	if c.Rho, ok = data["rho"].(float64); !ok {
 		return fmt.Errorf("rho is not a float64")
 	}
+	c.Box = Box{Center: c.Center, Sides: mgl64.Vec3{c.Side, c.Side, c.Side}, Rho: c.Rho}
 	return nil
 }
 
 func (c *Cube) Density(x, y, z float64) float64 {
-	x = math.Abs(x - c.Center[0])
-	y = math.Abs(y - c.Center[1])
-	z = math.Abs(z - c.Center[2])
-	if x < 0.5*c.Side && y < 0.5*c.Side && z < 0.5*c.Side {
-		return c.Rho
+	return c.Box.Density(x, y, z)
+}
+
+func (c *Cube) MinFeatureSize() float64 {
+	return c.Box.MinFeatureSize()
+}
+
+type Box struct {
+	Object
+	// parameters are center and side lengths
+	Center mgl64.Vec3
+	Sides  mgl64.Vec3
+	Rho    float64
+}
+
+func (b *Box) ToMap() map[string]interface{} {
+	return map[string]interface{}{
+		"type":   "box",
+		"center": b.Center,
+		"sides":  b.Sides,
+		"rho":    b.Rho,
+	}
+}
+
+func (b *Box) FromMap(data map[string]interface{}) error {
+	var ok bool
+	var slice []interface{}
+	if slice, ok = data["center"].([]interface{}); !ok {
+		return fmt.Errorf("center is not a Vec3")
+	}
+	err := ToVec(&slice, &b.Center)
+	if err != nil {
+		return err
+	}
+	if slice, ok = data["sides"].([]interface{}); !ok {
+		return fmt.Errorf("sides is not a Vec3")
+	}
+	err = ToVec(&slice, &b.Sides)
+	if err != nil {
+		return err
+	}
+	if b.Rho, err = ToFloat64(data["rho"]); err != nil {
+		return fmt.Errorf("rho is not a float64")
+	}
+	return nil
+}
+
+func (b *Box) Density(x, y, z float64) float64 {
+	x = math.Abs(x - b.Center[0])
+	y = math.Abs(y - b.Center[1])
+	z = math.Abs(z - b.Center[2])
+	if x < 0.5*b.Sides[0] && y < 0.5*b.Sides[1] && z < 0.5*b.Sides[2] {
+		return b.Rho
 	}
 	return 0.0
 }
 
-func (c *Cube) MinFeatureSize() float64 {
-	return c.Side
+func (b *Box) MinFeatureSize() float64 {
+	return math.Min(b.Sides[0], math.Min(b.Sides[1], b.Sides[2]))
 }
 
 func ToFloat64(data interface{}) (float64, error) {
@@ -233,6 +283,12 @@ func (oc *ObjectCollection) FromMap(data map[string]interface{}) error {
 				objects[i] = &object
 			case "cube":
 				object := Cube{}
+				if err := object.FromMap(object_data.(map[string]interface{})); err != nil {
+					return err
+				}
+				objects[i] = &object
+			case "box":
+				object := Box{}
 				if err := object.FromMap(object_data.(map[string]interface{})); err != nil {
 					return err
 				}

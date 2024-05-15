@@ -10,7 +10,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -39,16 +38,8 @@ func load_deformation(fn string) error {
 	if err != nil {
 		log.Fatal().Err(err)
 	}
-	var obj deformations.Deformation
-	if strings.Contains(string(data), "gaussian") {
-		obj = &deformations.GaussianDeformation{}
-	} else if strings.Contains(string(data), "linear") {
-		obj = &deformations.LinearDeformation{}
-	} else if strings.Contains(string(data), "rigid") {
-		obj = &deformations.RigidDeformation{}
-	} else {
-		log.Fatal().Msg("Unknown deformation type")
-	}
+	factory := &deformations.DeformationFactory{}
+
 	out := map[string]interface{}{}
 	// can have either yaml or json based on file extension via switch
 	switch ext := fn[len(fn)-4:]; ext {
@@ -65,12 +56,13 @@ func load_deformation(fn string) error {
 	default:
 		fmt.Println("Unknown file extension:", ext)
 	}
-	err = obj.FromMap(out)
+	deformation, err := factory.Create(out)
 	if err != nil {
-		log.Fatal().Msgf("Error converting to deformation: %v", err)
+		fmt.Println("Error creating deformation:", err)
+		return err
 	}
-	log.Info().Msgf("Deformation: %v", obj)
-	df = append(df, obj)
+	log.Info().Msgf("Deformation: %v", deformation)
+	df = append(df, deformation)
 	return err
 }
 

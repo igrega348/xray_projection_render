@@ -564,24 +564,16 @@
       "zmin": -1.01
     },
     {
-      "center": [
-        0,
-        0,
-        1.0
-      ],
-      "rho": 1,
-      "side": 0.5,
-      "type": "cube"
+      "center": [0,0,2],
+      "rho": 0.075,
+      "sides": [2,2,2],
+      "type": "box"
     },
     {
-      "center": [
-        0,
-        0,
-        -1.0
-      ],
-      "rho": 1,
-      "side": 0.5,
-      "type": "cube"
+      "center": [0,0,-2],
+      "rho": 0.075,
+      "sides": [2,2,2],
+      "type": "box"
     }
   ],
   "type": "object_collection"
