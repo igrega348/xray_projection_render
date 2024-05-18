@@ -1,3 +1,5 @@
-amplitudes: [0.0, 0.0, 0.0]
-sigmas: [0.1, 0.1, 0.1]
-centers: [0.0, 0.0, 0.0]
+amplitude: 0.0
+lengthscale: 0.2
+center: 0.0
+direction: z
+type: sigmoid

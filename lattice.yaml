@@ -10,7 +10,7 @@ uc:
                 - 0.25
                 - 0
                 - 0.375
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -21,29 +21,7 @@ uc:
                 - 0.25
                 - 0.5
                 - 0.375
-              radius: 0.03
-              rho: 1
-              type: cylinder
-            - p0:
-                - 0.125
-                - 0
-                - 0.25
-              p1:
-                - 0.25
-                - 0
-                - 0.125
-              radius: 0.03
-              rho: 1
-              type: cylinder
-            - p0:
-                - 0.125
-                - 0.5
-                - 0.25
-              p1:
-                - 0.25
-                - 0.5
-                - 0.125
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -51,120 +29,10 @@ uc:
                 - 0
                 - 0.25
               p1:
-                - 0
-                - 0.125
-                - 0.25
-              radius: 0.03
-              rho: 1
-              type: cylinder
-            - p0:
-                - 0.25
-                - 0
-                - 0.375
-              p1:
-                - 0.375
-                - 0
-                - 0.25
-              radius: 0.03
-              rho: 1
-              type: cylinder
-            - p0:
-                - 0.25
-                - 0.5
-                - 0.375
-              p1:
-                - 0.375
-                - 0.5
-                - 0.25
-              radius: 0.03
-              rho: 1
-              type: cylinder
-            - p0:
-                - 0.25
-                - 0
-                - 0.375
-              p1:
-                - 0.25
-                - 0.125
-                - 0.5
-              radius: 0.03
-              rho: 1
-              type: cylinder
-            - p0:
-                - 0.375
-                - 0
-                - 0.25
-              p1:
                 - 0.25
                 - 0
                 - 0.125
-              radius: 0.03
-              rho: 1
-              type: cylinder
-            - p0:
-                - 0.375
-                - 0.5
-                - 0.25
-              p1:
-                - 0.25
-                - 0.5
-                - 0.125
-              radius: 0.03
-              rho: 1
-              type: cylinder
-            - p0:
-                - 0.375
-                - 0
-                - 0.25
-              p1:
-                - 0.5
-                - 0.125
-                - 0.25
-              radius: 0.03
-              rho: 1
-              type: cylinder
-            - p0:
-                - 0.25
-                - 0
-                - 0.125
-              p1:
-                - 0.25
-                - 0.125
-                - 0
-              radius: 0.03
-              rho: 1
-              type: cylinder
-            - p0:
-                - 0.5
-                - 0.25
-                - 0.375
-              p1:
-                - 0.375
-                - 0.25
-                - 0.5
-              radius: 0.03
-              rho: 1
-              type: cylinder
-            - p0:
-                - 0.5
-                - 0.375
-                - 0.25
-              p1:
-                - 0.375
-                - 0.5
-                - 0.25
-              radius: 0.03
-              rho: 1
-              type: cylinder
-            - p0:
-                - 0.5
-                - 0.25
-                - 0.125
-              p1:
-                - 0.375
-                - 0.25
-                - 0
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -172,10 +40,142 @@ uc:
                 - 0.5
                 - 0.25
               p1:
+                - 0.25
+                - 0.5
+                - 0.125
+              radius: 0.02
+              rho: 1
+              type: cylinder
+            - p0:
+                - 0.125
+                - 0
+                - 0.25
+              p1:
+                - 0
+                - 0.125
+                - 0.25
+              radius: 0.02
+              rho: 1
+              type: cylinder
+            - p0:
+                - 0.25
+                - 0
+                - 0.375
+              p1:
+                - 0.375
+                - 0
+                - 0.25
+              radius: 0.02
+              rho: 1
+              type: cylinder
+            - p0:
+                - 0.25
+                - 0.5
+                - 0.375
+              p1:
+                - 0.375
+                - 0.5
+                - 0.25
+              radius: 0.02
+              rho: 1
+              type: cylinder
+            - p0:
+                - 0.25
+                - 0
+                - 0.375
+              p1:
+                - 0.25
+                - 0.125
+                - 0.5
+              radius: 0.02
+              rho: 1
+              type: cylinder
+            - p0:
+                - 0.375
+                - 0
+                - 0.25
+              p1:
+                - 0.25
+                - 0
+                - 0.125
+              radius: 0.02
+              rho: 1
+              type: cylinder
+            - p0:
+                - 0.375
+                - 0.5
+                - 0.25
+              p1:
+                - 0.25
+                - 0.5
+                - 0.125
+              radius: 0.02
+              rho: 1
+              type: cylinder
+            - p0:
+                - 0.375
+                - 0
+                - 0.25
+              p1:
+                - 0.5
+                - 0.125
+                - 0.25
+              radius: 0.02
+              rho: 1
+              type: cylinder
+            - p0:
+                - 0.25
+                - 0
+                - 0.125
+              p1:
+                - 0.25
+                - 0.125
+                - 0
+              radius: 0.02
+              rho: 1
+              type: cylinder
+            - p0:
+                - 0.5
+                - 0.25
+                - 0.375
+              p1:
+                - 0.375
+                - 0.25
+                - 0.5
+              radius: 0.02
+              rho: 1
+              type: cylinder
+            - p0:
+                - 0.5
+                - 0.375
+                - 0.25
+              p1:
+                - 0.375
+                - 0.5
+                - 0.25
+              radius: 0.02
+              rho: 1
+              type: cylinder
+            - p0:
+                - 0.5
+                - 0.25
+                - 0.125
+              p1:
+                - 0.375
+                - 0.25
+                - 0
+              radius: 0.02
+              rho: 1
+              type: cylinder
+            - p0:
+                - 0.125
+                - 0.5
+                - 0.25
+              p1:
                 - 0
                 - 0.375
                 - 0.25
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -186,7 +186,7 @@ uc:
                 - 0.25
                 - 0.375
                 - 0.5
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -197,29 +197,7 @@ uc:
                 - 0.25
                 - 0.375
                 - 0
-              radius: 0.03
-              rho: 1
-              type: cylinder
-            - p0:
-                - 0
-                - 0.125
-                - 0.25
-              p1:
-                - 0
-                - 0.25
-                - 0.375
-              radius: 0.03
-              rho: 1
-              type: cylinder
-            - p0:
-                - 0.5
-                - 0.125
-                - 0.25
-              p1:
-                - 0.5
-                - 0.25
-                - 0.375
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -229,8 +207,30 @@ uc:
               p1:
                 - 0
                 - 0.25
+                - 0.375
+              radius: 0.02
+              rho: 1
+              type: cylinder
+            - p0:
+                - 0.5
                 - 0.125
-              radius: 0.03
+                - 0.25
+              p1:
+                - 0.5
+                - 0.25
+                - 0.375
+              radius: 0.02
+              rho: 1
+              type: cylinder
+            - p0:
+                - 0
+                - 0.125
+                - 0.25
+              p1:
+                - 0
+                - 0.25
+                - 0.125
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -241,7 +241,7 @@ uc:
                 - 0.5
                 - 0.25
                 - 0.125
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -252,7 +252,7 @@ uc:
                 - 0.125
                 - 0.25
                 - 0.5
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -263,7 +263,7 @@ uc:
                 - 0
                 - 0.375
                 - 0.25
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -274,7 +274,7 @@ uc:
                 - 0.5
                 - 0.375
                 - 0.25
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -285,7 +285,7 @@ uc:
                 - 0
                 - 0.25
                 - 0.125
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -296,7 +296,7 @@ uc:
                 - 0.5
                 - 0.25
                 - 0.125
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -307,7 +307,7 @@ uc:
                 - 0.125
                 - 0.25
                 - 0
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -318,7 +318,7 @@ uc:
                 - 0.25
                 - 0.375
                 - 0
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -329,7 +329,7 @@ uc:
                 - 0.25
                 - 0.375
                 - 0.5
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -340,7 +340,7 @@ uc:
                 - 0.25
                 - 0.125
                 - 0
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -351,7 +351,7 @@ uc:
                 - 0.25
                 - 0.125
                 - 0.5
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -362,7 +362,7 @@ uc:
                 - 0.375
                 - 0.25
                 - 0
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -373,7 +373,7 @@ uc:
                 - 0.375
                 - 0.25
                 - 0.5
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -384,7 +384,7 @@ uc:
                 - 0.25
                 - 0.125
                 - 0
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
             - p0:
@@ -395,7 +395,7 @@ uc:
                 - 0.25
                 - 0.125
                 - 0.5
-              radius: 0.03
+              radius: 0.02
               rho: 1
               type: cylinder
         type: object_collection
