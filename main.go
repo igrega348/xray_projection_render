@@ -274,13 +274,13 @@ func render(
 	// create output directory if it doesn't exist
 	if _, err := os.Stat(output_dir); os.IsNotExist(err) {
 		log.Info().Msgf("Creating output directory '%s'", output_dir)
-		os.Mkdir(output_dir, 0755)
+		os.MkdirAll(output_dir, 0755)
 	} else {
 		log.Info().Msgf("Output to directory '%s'", output_dir)
 	}
 	// set or compute ds
 	if ds < 0 {
-		ds = lat[0].MinFeatureSize() / 2.0
+		ds = lat[0].MinFeatureSize() / 3.0
 		log.Info().Msgf("Setting ds to %f", ds)
 	}
 
@@ -422,30 +422,33 @@ func render(
 		png.Encode(out, myImage)
 		out.Close()
 
-		transform_params.Frames = append(transform_params.Frames, OneFrameParams{FilePath: filepath.ToSlash(filename), TransformMatrix: transform_matrix, Time: time_label})
+		dname, fname := filepath.Split(filename)
+		rel_path := filepath.Join(filepath.Base(dname), fname)
+		transform_params.Frames = append(transform_params.Frames, OneFrameParams{FilePath: filepath.ToSlash(rel_path), TransformMatrix: transform_matrix, Time: time_label})
 	}
 
 	// write transform parameters to JSON
 	jsonData, err := json.MarshalIndent(transform_params, "", "  ")
 	if err != nil {
-		fmt.Println("Error marshalling to JSON:", err)
+		log.Fatal().Msg("Error marshalling object to JSON")
 	}
 	log.Info().Msgf("Writing transform parameters to '%s'", transforms_file)
 	err = os.WriteFile(transforms_file, jsonData, 0644)
 	if err != nil {
-		fmt.Println("Error writing JSON to file:", err)
+		log.Fatal().Msg("Error writing JSON to file")
 	}
 
 	// write object to JSON or YAML
 	data, err := json.MarshalIndent(lat[0].ToMap(), "", "  ")
 	// data, err := yaml.Marshal(lat[0].ToMap())
 	if err != nil {
-		fmt.Println("Error marshalling object:", err)
+		log.Fatal().Msg("Error marshalling object to JSON")
 	}
-	log.Info().Msg("Writing object to 'object.json'")
-	err = os.WriteFile("object.json", data, 0644)
+	obj_path := filepath.Join(filepath.Dir(output_dir), "object.json")
+	log.Info().Msgf("Writing object to '%s'", filepath.ToSlash(obj_path))
+	err = os.WriteFile(obj_path, data, 0644)
 	if err != nil {
-		fmt.Println("Error writing file:", err)
+		log.Fatal().Msg("Error writing object.json to file")
 	}
 }
 
