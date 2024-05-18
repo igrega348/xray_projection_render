@@ -16,7 +16,14 @@ import (
 
 func TestMain(m *testing.M) {
 	defer profile.Start().Stop()
-	var img [res][res]float64
+	const res = 128
+	const num_images = 2
+	const R = 4.0
+	const fov = 45.0
+	var img = make([][]float64, res)
+	for i := range img {
+		img[i] = make([]float64, res)
+	}
 
 	// create a progress bar
 	for i_img := 0; i_img < num_images; i_img++ {
@@ -54,7 +61,7 @@ func TestMain(m *testing.M) {
 				wg.Add(1)
 				vx := mgl64.Vec3{float64(i)/(res/2) - 1, float64(j)/(res/2) - 1, -f}
 				vx = mgl64.TransformCoordinate(vx, camera)
-				go computePixel(&img, i, j, origin, vx.Sub(origin), 0.001, R-1.0, R+1.0, &wg)
+				go computePixel(img, i, j, origin, vx.Sub(origin), 0.001, R-1.0, R+1.0, &wg)
 			}
 		}
 		wg.Wait()

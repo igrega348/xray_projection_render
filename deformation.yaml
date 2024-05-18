@@ -1,0 +1,5 @@
+amplitude: 0.0
+lengthscale: 0.2
+center: 0.0
+direction: z
+type: sigmoid
