@@ -150,7 +150,6 @@ func density(x, y, z float64) float64 {
 	return lat[0].Density(x, y, z) * density_multiplier
 }
 
-
 // Integrate the density along the ray from the origin to the end point.
 // Simple integration method with fixed step size.
 func integrate_along_ray(origin, direction mgl64.Vec3, ds, smin, smax float64) float64 {
@@ -339,7 +338,7 @@ func render(
 		var th, phi float64
 
 		th = float64(i_img) * dth
-		
+
 		if out_of_plane { // phi random
 			z := rand.Float64()*2 - 1
 			phi = math.Acos(z)
@@ -441,12 +440,12 @@ func render(
 	}
 
 	// write object to JSON or YAML
-	data, err := json.MarshalIndent(lat[0].ToMap(), "", "  ")
-	// data, err := yaml.Marshal(lat[0].ToMap())
+	// data, err := json.MarshalIndent(lat[0].ToMap(), "", "  ")
+	data, err := yaml.Marshal(lat[0].ToMap())
 	if err != nil {
-		log.Fatal().Msg("Error marshalling object to JSON")
+		log.Fatal().Msg("Error marshalling object to YAML")
 	}
-	obj_path := filepath.Join(filepath.Dir(output_dir), "object.json")
+	obj_path := filepath.Join(filepath.Dir(output_dir), "object.yaml")
 	log.Info().Msgf("Writing object to '%s'", filepath.ToSlash(obj_path))
 	err = os.WriteFile(obj_path, data, 0644)
 	if err != nil {
