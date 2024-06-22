@@ -239,6 +239,7 @@ func render(
 	transforms_file string,
 	deformation_file string,
 	time_label float64,
+	transparency bool,
 ) {
 	defer timer()()
 	wrt := os.Stdout
@@ -364,7 +365,17 @@ func render(
 		for i := 0; i < res; i++ {
 			for j := 0; j < res; j++ {
 				val := img[i][j]
-				c := color.RGBA64{uint16(val * 0xffff), uint16(val * 0xffff), uint16(val * 0xffff), 0xffff}
+				var alpha uint16
+				if transparency {
+					if val < 1.0 {
+						alpha = uint16(0xffff)
+					} else {
+						alpha = uint16(0x0000)
+					}
+				} else {
+					alpha = uint16(0xffff)
+				}
+				c := color.RGBA64{uint16(val * 0xffff), uint16(val * 0xffff), uint16(val * 0xffff), alpha}
 				// image has origin at top left, so we need to flip the y coordinate
 				myImage.SetRGBA64(i, res-j, c)
 				if val < min_val {
@@ -504,6 +515,10 @@ func main() {
 				Usage: "Label to pass to image metadata",
 				Value: 0.0,
 			},
+			&cli.BoolFlag{
+				Name:  "transparency",
+				Usage: "Enable transparency in output images",
+			},
 			// verbose flag
 			&cli.BoolFlag{
 				Name:  "v",
@@ -543,6 +558,7 @@ func main() {
 				cCtx.String("transforms_file"),
 				cCtx.String("deformation_file"),
 				cCtx.Float64("time_label"),
+				cCtx.Bool("transparency"),
 			)
 			return nil
 		},
