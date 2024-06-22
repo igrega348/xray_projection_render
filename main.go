@@ -119,6 +119,8 @@ func load_object(fn string) error {
 		obj = &objects.Cube{}
 	case "cylinder":
 		obj = &objects.Cylinder{}
+	case "parallelepiped":
+		obj = &objects.Parallelepiped{}
 	default:
 		log.Fatal().Msgf("Unknown object type: %v", out["type"])
 	}
