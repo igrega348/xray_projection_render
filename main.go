@@ -340,7 +340,7 @@ func render(
 		dth := 360.0 / float64(num_images)
 		var th, phi float64
 
-		th = float64(i_img) * dth
+		th = float64(i_img)*dth + 90.0
 
 		if out_of_plane { // phi random
 			z := rand.Float64()*2 - 1
