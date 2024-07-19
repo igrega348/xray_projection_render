@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/go-gl/mathgl/mgl64"
+	"github.com/rs/zerolog/log"
 )
 
 type Object interface {
@@ -224,7 +225,9 @@ func (c *Cylinder) FromMap(data map[string]interface{}) error {
 	if c.Radius, ok = data["radius"].(float64); !ok {
 		return fmt.Errorf("radius is not a float64")
 	}
-	if c.Rho, err = ToFloat64(data["rho"]); err != nil {
+	if _, ok := data["rho"]; !ok {
+		c.Rho = 1.0
+	} else if c.Rho, err = ToFloat64(data["rho"]); err != nil {
 		return fmt.Errorf("rho is not a float64")
 	}
 	return nil
@@ -271,8 +274,13 @@ func (oc *ObjectCollection) ToMap() map[string]interface{} {
 
 func (oc *ObjectCollection) FromMap(data map[string]interface{}) error {
 	var objects []Object
+	if greedy_dens_eval, ok := data["greedy_dens_eval"].(bool); ok {
+		log.Info().Msgf("Setting greedy dens eval to %v", greedy_dens_eval)
+		oc.GreedyDensEval = greedy_dens_eval
+	}
 	if objects_data, ok := data["objects"].([]interface{}); ok {
 		objects = make([]Object, len(objects_data))
+		log.Info().Msgf("Loading object collection with %d objects", len(objects_data))
 		for i, object_data := range objects_data {
 			switch object_data.(map[string]interface{})["type"] {
 			case "sphere":
