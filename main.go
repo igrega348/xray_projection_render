@@ -119,6 +119,8 @@ func load_object(fn string) error {
 		obj = &objects.Cube{}
 	case "cylinder":
 		obj = &objects.Cylinder{}
+	case "parallelepiped":
+		obj = &objects.Parallelepiped{}
 	default:
 		log.Fatal().Msgf("Unknown object type: %v", out["type"])
 	}
@@ -259,6 +261,7 @@ func render(
 	transforms_file string,
 	deformation_file string,
 	time_label float64,
+	transparency bool,
 ) {
 	defer timer()()
 	wrt := os.Stdout
@@ -337,7 +340,7 @@ func render(
 		dth := 360.0 / float64(num_images)
 		var th, phi float64
 
-		th = float64(i_img) * dth
+		th = float64(i_img)*dth + 90.0
 
 		if out_of_plane { // phi random
 			z := rand.Float64()*2 - 1
@@ -399,7 +402,17 @@ func render(
 		for i := 0; i < res; i++ {
 			for j := 0; j < res; j++ {
 				val := img[i][j]
-				c := color.RGBA64{uint16(val * 0xffff), uint16(val * 0xffff), uint16(val * 0xffff), 0xffff}
+				var alpha uint16
+				if transparency {
+					if val < 1.0 {
+						alpha = uint16(0xffff)
+					} else {
+						alpha = uint16(0x0000)
+					}
+				} else {
+					alpha = uint16(0xffff)
+				}
+				c := color.RGBA64{uint16(val * 0xffff), uint16(val * 0xffff), uint16(val * 0xffff), alpha}
 				// image has origin at top left, so we need to flip the y coordinate
 				myImage.SetRGBA64(i, res-j, c)
 				if val < min_val {
@@ -546,6 +559,10 @@ func main() {
 				Name:  "text_progress",
 				Usage: "Use text progress bar",
 			},
+			&cli.BoolFlag{
+				Name:  "transparency",
+				Usage: "Enable transparency in output images",
+			},
 			// verbose flag
 			&cli.BoolFlag{
 				Name:  "v",
@@ -586,6 +603,7 @@ func main() {
 				cCtx.String("transforms_file"),
 				cCtx.String("deformation_file"),
 				cCtx.Float64("time_label"),
+				cCtx.Bool("transparency"),
 			)
 			return nil
 		},

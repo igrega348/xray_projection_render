@@ -164,6 +164,78 @@ func (b *Box) MinFeatureSize() float64 {
 	return math.Min(b.Sides[0], math.Min(b.Sides[1], b.Sides[2]))
 }
 
+type Parallelepiped struct {
+	Object
+	// parameters are origin and vectors for sides
+	Origin     mgl64.Vec3
+	V1, V2, V3 mgl64.Vec3
+	Rho        float64
+	mat        mgl64.Mat3 // matrix for coordinate transformation
+}
+
+func (p *Parallelepiped) ToMap() map[string]interface{} {
+	return map[string]interface{}{
+		"type":   "parallelepiped",
+		"origin": p.Origin,
+		"v1":     p.V1,
+		"v2":     p.V2,
+		"v3":     p.V3,
+		"rho":    p.Rho,
+	}
+}
+
+func (p *Parallelepiped) FromMap(data map[string]interface{}) error {
+	var ok bool
+	var slice []interface{}
+	if slice, ok = data["origin"].([]interface{}); !ok {
+		return fmt.Errorf("origin is not a Vec3")
+	}
+	err := ToVec(&slice, &p.Origin)
+	if err != nil {
+		return err
+	}
+	if slice, ok = data["v1"].([]interface{}); !ok {
+		return fmt.Errorf("v1 is not a Vec3")
+	}
+	err = ToVec(&slice, &p.V1)
+	if err != nil {
+		return err
+	}
+	if slice, ok = data["v2"].([]interface{}); !ok {
+		return fmt.Errorf("v2 is not a Vec3")
+	}
+	err = ToVec(&slice, &p.V2)
+	if err != nil {
+		return err
+	}
+	if slice, ok = data["v3"].([]interface{}); !ok {
+		return fmt.Errorf("v3 is not a Vec3")
+	}
+	err = ToVec(&slice, &p.V3)
+	if err != nil {
+		return err
+	}
+	if p.Rho, err = ToFloat64(data["rho"]); err != nil {
+		return fmt.Errorf("rho is not a float64")
+	}
+	p.mat = mgl64.Mat3FromCols(p.V1, p.V2, p.V3).Inv()
+	return nil
+}
+
+func (p *Parallelepiped) Density(x, y, z float64) float64 {
+	// transform point to parallelepiped coordinates
+	pt := mgl64.Vec3{x, y, z}
+	x, y, z = p.mat.Mul3x1(pt.Sub(p.Origin)).Elem()
+	if x > 0.0 && x < 1.0 && y > 0.0 && y < 1.0 && z > 0.0 && z < 1.0 {
+		return p.Rho
+	}
+	return 0.0
+}
+
+func (p *Parallelepiped) MinFeatureSize() float64 {
+	return 0.2 * math.Min(p.V1.Len(), math.Min(p.V2.Len(), p.V3.Len()))
+}
+
 func ToFloat64(data interface{}) (float64, error) {
 	switch t := data.(type) {
 	case int:
@@ -303,6 +375,12 @@ func (oc *ObjectCollection) FromMap(data map[string]interface{}) error {
 				objects[i] = &object
 			case "cylinder":
 				object := Cylinder{}
+				if err := object.FromMap(object_data.(map[string]interface{})); err != nil {
+					return err
+				}
+				objects[i] = &object
+			case "parallelepiped":
+				object := Parallelepiped{}
 				if err := object.FromMap(object_data.(map[string]interface{})); err != nil {
 					return err
 				}
