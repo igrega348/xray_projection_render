@@ -23,5 +23,9 @@ go.work
 # Output image files
 *.png
 
+# Object files
+*.json
+*.yaml
+
 # PAT
 pat*

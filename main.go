@@ -453,12 +453,12 @@ func render(
 	}
 
 	// write object to JSON or YAML
-	// data, err := json.MarshalIndent(lat[0].ToMap(), "", "  ")
-	data, err := yaml.Marshal(lat[0].ToMap())
+	data, err := json.MarshalIndent(lat[0].ToMap(), "", "  ")
+	// data, err := yaml.Marshal(lat[0].ToMap())
 	if err != nil {
 		log.Fatal().Msg("Error marshalling object to YAML")
 	}
-	obj_path := filepath.Join(filepath.Dir(output_dir), "object.yaml")
+	obj_path := filepath.Join(filepath.Dir(output_dir), "object.json")
 	log.Info().Msgf("Writing object to '%s'", filepath.ToSlash(obj_path))
 	err = os.WriteFile(obj_path, data, 0644)
 	if err != nil {
