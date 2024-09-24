@@ -93,22 +93,29 @@ go run . --input examples/cube_w_hole.yaml --deformation_file examples/deformati
 When querying density field, coordinates will be remapped using the chosen deformation field.
 Implemented deformations are _Sigmoid_, _Rigid_, _Linear_, _Gaussian_ with the following deformation fields:
 - Rigid: parametrized by three-component constant displacement vector $[u_x,u_y,u_z]$.
+  
 $$
 x\leftarrow x+u_x; \, y\leftarrow y+u_y; \, z\leftarrow z+u_z
 $$
+
 - Linear: parametrized by 3 strains $[\epsilon_x, \epsilon_y, \epsilon_z]$.
+
 $$
 x \leftarrow x (1+ \epsilon_x); \, y \leftarrow y (1+ \epsilon_y); \, z \leftarrow z (1+ \epsilon_z)
 $$
+
 - Sigmoid: parametrized by _amplitude A, center c, lengthscale L, direction_. For direction 'z':
+
 $$
 x \leftarrow x; \, y \leftarrow y; \, z \leftarrow z+\frac{A}{1+\exp\left( - (z-c)/L \right) }
 $$
 
 - Gaussian: parametrized by _amplitudes A[3], sigmas s[3], centers c[3]_.
+
 $$
 r \leftarrow \sqrt{(x-c[0])^2+(y-c[1])^2+(z-c[2])^2}
 $$
+
 $$
 x \leftarrow x+A[0]\exp\left(-\frac{r^2}{2s[0]^2}\right); \, y \leftarrow y+A[1]\exp\left(-\frac{r^2}{2s[1]^2}\right); \mathrm{etc.}
 $$
