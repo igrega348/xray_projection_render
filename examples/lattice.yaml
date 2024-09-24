@@ -1,6 +1,6 @@
 type: tessellated_obj_coll
 uc:
-  struts:
+  objects:
     objects:
     - p0:
       - 0.1

@@ -168,7 +168,7 @@ type Parallelepiped struct {
 	Object
 	// parameters are origin and vectors for sides
 	Origin     mgl64.Vec3
-	V1, V2, V3 mgl64.Vec3
+	V0, V1, V2 mgl64.Vec3
 	Rho        float64
 	mat        mgl64.Mat3 // matrix for coordinate transformation
 }
@@ -177,9 +177,9 @@ func (p *Parallelepiped) ToMap() map[string]interface{} {
 	return map[string]interface{}{
 		"type":   "parallelepiped",
 		"origin": p.Origin,
+		"v0":     p.V0,
 		"v1":     p.V1,
 		"v2":     p.V2,
-		"v3":     p.V3,
 		"rho":    p.Rho,
 	}
 }
@@ -191,6 +191,13 @@ func (p *Parallelepiped) FromMap(data map[string]interface{}) error {
 		return fmt.Errorf("origin is not a Vec3")
 	}
 	err := ToVec(&slice, &p.Origin)
+	if err != nil {
+		return err
+	}
+	if slice, ok = data["v0"].([]interface{}); !ok {
+		return fmt.Errorf("v0 is not a Vec3")
+	}
+	err = ToVec(&slice, &p.V0)
 	if err != nil {
 		return err
 	}
@@ -208,17 +215,10 @@ func (p *Parallelepiped) FromMap(data map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
-	if slice, ok = data["v3"].([]interface{}); !ok {
-		return fmt.Errorf("v3 is not a Vec3")
-	}
-	err = ToVec(&slice, &p.V3)
-	if err != nil {
-		return err
-	}
 	if p.Rho, err = ToFloat64(data["rho"]); err != nil {
 		return fmt.Errorf("rho is not a float64")
 	}
-	p.mat = mgl64.Mat3FromCols(p.V1, p.V2, p.V3).Inv()
+	p.mat = mgl64.Mat3FromCols(p.V0, p.V1, p.V2).Inv()
 	return nil
 }
 
@@ -233,7 +233,7 @@ func (p *Parallelepiped) Density(x, y, z float64) float64 {
 }
 
 func (p *Parallelepiped) MinFeatureSize() float64 {
-	return 0.2 * math.Min(p.V1.Len(), math.Min(p.V2.Len(), p.V3.Len()))
+	return 0.2 * math.Min(p.V0.Len(), math.Min(p.V1.Len(), p.V2.Len()))
 }
 
 func ToFloat64(data interface{}) (float64, error) {
@@ -430,42 +430,42 @@ func (oc *ObjectCollection) MinFeatureSize() float64 {
 
 type UnitCell struct {
 	// object collection. But overload density method and provide bounds
-	Struts                             ObjectCollection
+	Objects                            ObjectCollection
 	Xmin, Xmax, Ymin, Ymax, Zmin, Zmax float64
 }
 
 func (uc *UnitCell) Density(x, y, z float64) float64 {
-	// check if point is within bounds. But account for struts a bit smaller
+	// check if point is within bounds. But account for objects a bit smaller
 	if x < uc.Xmin || x > uc.Xmax || y < uc.Ymin || y > uc.Ymax || z < uc.Zmin || z > uc.Zmax {
 		return 0.0
 	}
-	return uc.Struts.Density(x, y, z)
+	return uc.Objects.Density(x, y, z)
 }
 
 func (uc *UnitCell) ToMap() map[string]interface{} {
 	return map[string]interface{}{
-		"type":   "unit_cell",
-		"struts": uc.Struts.ToMap(),
-		"xmin":   uc.Xmin,
-		"xmax":   uc.Xmax,
-		"ymin":   uc.Ymin,
-		"ymax":   uc.Ymax,
-		"zmin":   uc.Zmin,
-		"zmax":   uc.Zmax,
+		"type":    "unit_cell",
+		"objects": uc.Objects.ToMap(),
+		"xmin":    uc.Xmin,
+		"xmax":    uc.Xmax,
+		"ymin":    uc.Ymin,
+		"ymax":    uc.Ymax,
+		"zmin":    uc.Zmin,
+		"zmax":    uc.Zmax,
 	}
 }
 
 func (uc *UnitCell) FromMap(data map[string]interface{}) error {
 	var err error
-	if struts_data, ok := data["struts"].(map[string]interface{}); ok {
-		struts := ObjectCollection{}
-		if err := struts.FromMap(struts_data); err != nil {
+	if objects_data, ok := data["objects"].(map[string]interface{}); ok {
+		objects := ObjectCollection{}
+		if err := objects.FromMap(objects_data); err != nil {
 			return err
 		}
-		uc.Struts = struts
-		uc.Struts.GreedyDensEval = true
+		uc.Objects = objects
+		uc.Objects.GreedyDensEval = true
 	} else {
-		return fmt.Errorf("struts is not a map")
+		return fmt.Errorf("objects is not a map")
 	}
 	if uc.Xmin, err = ToFloat64(data["xmin"]); err != nil {
 		return fmt.Errorf("xmin is not a float64")
@@ -557,7 +557,7 @@ func (l *TessellatedObjColl) Density(x, y, z float64) float64 {
 }
 
 func (l *TessellatedObjColl) MinFeatureSize() float64 {
-	return l.UC.Struts.MinFeatureSize()
+	return l.UC.Objects.MinFeatureSize()
 }
 
 func MakeKelvin(rad float64, scale float64) UnitCell {
@@ -607,7 +607,7 @@ func MakeKelvin(rad float64, scale float64) UnitCell {
 	for i, strut := range struts {
 		objects[i] = &strut
 	}
-	uc := UnitCell{Struts: ObjectCollection{Objects: objects, GreedyDensEval: true}, Xmin: 0.0, Xmax: 1.0 * scale, Ymin: 0.0, Ymax: 1.0 * scale, Zmin: 0.0, Zmax: 1.0 * scale}
+	uc := UnitCell{Objects: ObjectCollection{Objects: objects, GreedyDensEval: true}, Xmin: 0.0, Xmax: 1.0 * scale, Ymin: 0.0, Ymax: 1.0 * scale, Zmin: 0.0, Zmax: 1.0 * scale}
 	return uc
 }
 
@@ -621,5 +621,5 @@ func MakeKelvin(rad float64, scale float64) UnitCell {
 // 		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{-0.5, 0.5, -1 / s2}, Radius: rad},
 // 		{P0: mgl64.Vec3{0, 0, 0}, P1: mgl64.Vec3{0.5, 0.5, 1 / s2}, Radius: rad},
 // 	}
-// 	return Lattice{Struts: struts}
+// 	return Lattice{Objects: struts}
 // }
