@@ -16,9 +16,10 @@ xray_projection_render.exe --input examples/cube_w_hole.yaml
 ./xray_projection_render --input examples/cube_w_hole.yaml
 ```
 
-![Cube with hole](https://github.com/igrega348/xray_projection_render/examples/cube_00.png?raw=true)
+![Cube with hole](https://github.com/igrega348/xray_projection_render/blob/main/examples/cube_00.png?raw=true)
 
 To see all available options, run
+
 ```
 ./xray_projection_render -h
 ```
