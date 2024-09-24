@@ -76,7 +76,10 @@ type LinearDeformation struct {
 }
 
 func (l *LinearDeformation) Apply(x, y, z float64) (float64, float64, float64) {
-	return x + l.Strains[0]*x, y + l.Strains[1]*y, z + l.Strains[2]*z
+	_x := x + l.Strains[0]*x + l.Strains[5]*y + l.Strains[4]*z
+	_y := y + l.Strains[5]*x + l.Strains[1]*y + l.Strains[3]*z
+	_z := z + l.Strains[4]*x + l.Strains[3]*y + l.Strains[2]*z
+	return _x, _y, _z
 }
 
 func (l *LinearDeformation) ToMap() map[string]interface{} {
