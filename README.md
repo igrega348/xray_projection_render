@@ -99,7 +99,7 @@ Implemented deformations are _Sigmoid_, _Rigid_, _Linear_, _Gaussian_ with the f
 - Rigid: parametrized by three-component constant displacement vector $[u_x,u_y,u_z]$.
   
 $$
-x\leftarrow x+u_x; \, y\leftarrow y+u_y; \, z\leftarrow z+u_z
+x\leftarrow x+u_x; \quad y\leftarrow y+u_y; \quad z\leftarrow z+u_z
 $$
 
 - Linear: parametrized by 6 strains $[\epsilon_{xx}, \epsilon_{yy}, \epsilon_{zz}, \epsilon_{yz}, \epsilon_{xz}, \epsilon_{xy}]$.
@@ -111,7 +111,7 @@ $$
 - Sigmoid: parametrized by _amplitude A, center c, lengthscale L, direction_. For direction 'z':
 
 $$
-x \leftarrow x; \, y \leftarrow y; \, z \leftarrow z+\frac{A}{1+\exp\left( - (z-c)/L \right) }
+x \leftarrow x; \quad y \leftarrow y; \quad z \leftarrow z+\frac{A}{1+\exp\left( - (z-c)/L \right) }
 $$
 
 - Gaussian: parametrized by _amplitudes A[3], sigmas s[3], centers c[3]_.
@@ -121,7 +121,7 @@ r \leftarrow \sqrt{(x-c[0])^2+(y-c[1])^2+(z-c[2])^2}
 $$
 
 $$
-x \leftarrow x+A[0]\exp\left(-\frac{r^2}{2s[0]^2}\right); \, y \leftarrow y+A[1]\exp\left(-\frac{r^2}{2s[1]^2}\right); \mathrm{etc.}
+x \leftarrow x+A[0]\exp\left(-\frac{r^2}{2s[0]^2}\right); \quad y \leftarrow y+A[1]\exp\left(-\frac{r^2}{2s[1]^2}\right); \quad z \leftarrow z+A[2]\exp\left(-\frac{r^2}{2s[2]^2}\right)
 $$
 
 ### Splitting of long jobs
