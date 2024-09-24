@@ -91,7 +91,7 @@ It is possible to apply topology-preserving deformations to the object by using 
 For example, one can run
 
 ```
-go run . --input examples/cube_w_hole.yaml --deformation_file examples/deformation.yaml
+go run . --input examples/cube_w_hole.yaml --deformation_file examples/deformation_sigmoid.yaml
 ```
 
 When querying density field, coordinates will be remapped using the chosen deformation field.
