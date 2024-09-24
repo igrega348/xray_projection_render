@@ -64,16 +64,18 @@ Setting `--out_of_plane` will generate a projection at random elevation angles. 
 ### Hierarchical integration (ray tracing)
 
 The attenuation equation for X-ray comes from the _Beer-Lambert Law_:
+
 $$
-I = I_0 \exp\left(-\int_{s_0}^{s_1} \rho(s) \mathbb{d}s \right)
+I = I_0 \exp\left(-\int_{s_0}^{s_1} \rho(s) \mathrm{ds} \right)
 $$
+
 where $I_0$ is the intensity of the empty image and $I$ is the attenuated intensity recorded at the detector/camera.
 The ray is assumed to go between $s_0$ and $s_1$.
 
 Two functions are implemented for integration along the ray: _integrate_hierarchical_ (default) and _integrate_along_ray_.
 Both are controlled by parameter `--ds`.
 
-_integrate_along_ray_ is simple numerical integration where the ray is divided into equal segments of length $ds$ and the integral is approximated as the sum $\int \rho(s) ds \approx \sum \rho(s) ds$
+_integrate_along_ray_ is simple numerical integration where the ray is divided into equal segments of length $ds$ and the integral is approximated as the sum $\int \rho(s) \mathrm{ds} \approx \sum \rho(s) ds$
 
 _integrate_hierarchical_ is a little bit more advanced. The motivation is to avoid banding artifacts without uniformly reducing $ds$. It works by only refining $ds$ in segments in which the density changed between the left and right boundary.
 
