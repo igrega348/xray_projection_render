@@ -24,10 +24,10 @@ func (g *GaussianDeformation) Apply(x, y, z float64) (float64, float64, float64)
 	x0 := x - g.Centers[0]
 	y0 := y - g.Centers[1]
 	z0 := z - g.Centers[2]
-	r := math.Sqrt(x0*x0 + y0*y0 + z0*z0)
-	dx := g.Amplitudes[0] * math.Exp(-r*r/(2*g.Sigmas[0]*g.Sigmas[0]))
-	dy := g.Amplitudes[1] * math.Exp(-r*r/(2*g.Sigmas[1]*g.Sigmas[1]))
-	dz := g.Amplitudes[2] * math.Exp(-r*r/(2*g.Sigmas[2]*g.Sigmas[2]))
+	r2 := x0*x0 + y0*y0 + z0*z0
+	dx := g.Amplitudes[0] * math.Exp(-r2/(2*g.Sigmas[0]*g.Sigmas[0]))
+	dy := g.Amplitudes[1] * math.Exp(-r2/(2*g.Sigmas[1]*g.Sigmas[1]))
+	dz := g.Amplitudes[2] * math.Exp(-r2/(2*g.Sigmas[2]*g.Sigmas[2]))
 	return x + dx, y + dy, z + dz
 }
 
