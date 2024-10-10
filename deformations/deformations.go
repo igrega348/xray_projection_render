@@ -22,8 +22,8 @@ type GaussianDeformation struct {
 
 func (g *GaussianDeformation) Apply(x, y, z float64) (float64, float64, float64) {
 	x0 := x - g.Centers[0]
-	y0 := y - g.Centers[0]
-	z0 := z - g.Centers[0]
+	y0 := y - g.Centers[1]
+	z0 := z - g.Centers[2]
 	r := math.Sqrt(x0*x0 + y0*y0 + z0*z0)
 	dx := g.Amplitudes[0] * math.Exp(-r*r/(2*g.Sigmas[0]*g.Sigmas[0]))
 	dy := g.Amplitudes[1] * math.Exp(-r*r/(2*g.Sigmas[1]*g.Sigmas[1]))
@@ -187,6 +187,44 @@ func (s *SigmoidDeformation) FromMap(data map[string]interface{}) error {
 	return nil
 }
 
+type ComposedDeformation struct {
+	Deformation
+	Deformations []Deformation
+}
+
+func (c *ComposedDeformation) Apply(x, y, z float64) (float64, float64, float64) {
+	for _, d := range c.Deformations {
+		x, y, z = d.Apply(x, y, z)
+	}
+	return x, y, z
+}
+
+func (c *ComposedDeformation) ToMap() map[string]interface{} {
+	deformations := make([]map[string]interface{}, len(c.Deformations))
+	for i, d := range c.Deformations {
+		deformations[i] = d.ToMap()
+	}
+	return map[string]interface{}{
+		"deformations": deformations,
+	}
+}
+
+func (c *ComposedDeformation) FromMap(data map[string]interface{}) error {
+	deformations, ok := data["deformations"].([]interface{})
+	if !ok {
+		return fmt.Errorf("deformations must be a list")
+	}
+	c.Deformations = make([]Deformation, len(deformations))
+	for i, d := range deformations {
+		deformation, err := NewDeformation(d.(map[string]interface{}))
+		if err != nil {
+			return err
+		}
+		c.Deformations[i] = deformation
+	}
+	return nil
+}
+
 type DeformationFactory struct{}
 
 func (f *DeformationFactory) Create(data map[string]interface{}) (Deformation, error) {
@@ -211,6 +249,10 @@ func NewDeformation(data map[string]interface{}) (Deformation, error) {
 		s := &SigmoidDeformation{}
 		err := s.FromMap(data)
 		return s, err
+	case "composed":
+		c := &ComposedDeformation{}
+		err := c.FromMap(data)
+		return c, err
 	default:
 		return nil, fmt.Errorf("unknown deformation type")
 	}
