@@ -254,7 +254,7 @@ func NewDeformation(data map[string]interface{}) (Deformation, error) {
 		err := c.FromMap(data)
 		return c, err
 	default:
-		return nil, fmt.Errorf("unknown deformation type")
+		return nil, fmt.Errorf("unknown deformation type %s", data["type"])
 	}
 }
 
