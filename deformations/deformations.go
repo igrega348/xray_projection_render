@@ -2,8 +2,9 @@ package deformations
 
 import (
 	"fmt"
-	"log"
 	"math"
+
+	"github.com/rs/zerolog/log"
 )
 
 type Deformation interface {
@@ -150,7 +151,7 @@ func (s *SigmoidDeformation) Apply(x, y, z float64) (float64, float64, float64) 
 	case "z":
 		return x, y, z + s.Amplitude/(1+math.Exp(-(z-s.Center)/s.Lengthscale))
 	default:
-		log.Fatal("Invalid direction")
+		log.Fatal().Msg("Invalid direction")
 		return 0, 0, 0
 	}
 }
@@ -232,6 +233,11 @@ func (f *DeformationFactory) Create(data map[string]interface{}) (Deformation, e
 }
 
 func NewDeformation(data map[string]interface{}) (Deformation, error) {
+	if data["type"] == nil {
+		log.Error().Msgf("Error: deformation type is nil. Data: %v", data)
+		return nil, fmt.Errorf("deformation type is nil")
+	}
+
 	switch data["type"] {
 	case "gaussian":
 		g := &GaussianDeformation{}
@@ -254,7 +260,8 @@ func NewDeformation(data map[string]interface{}) (Deformation, error) {
 		err := c.FromMap(data)
 		return c, err
 	default:
-		return nil, fmt.Errorf("unknown deformation type %s", data["type"])
+		log.Error().Msgf("Error: unknown deformation type %v. Data: %v", data["type"], data)
+		return nil, fmt.Errorf("unknown deformation type %v", data["type"])
 	}
 }
 
