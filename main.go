@@ -414,7 +414,7 @@ func render(
 				}
 				c := color.RGBA64{uint16(val * 0xffff), uint16(val * 0xffff), uint16(val * 0xffff), alpha}
 				// image has origin at top left, so we need to flip the y coordinate
-				myImage.SetRGBA64(i, res-j, c)
+				myImage.SetRGBA64(i, res-j-1, c)
 				if val < min_val {
 					min_val = val
 				}
