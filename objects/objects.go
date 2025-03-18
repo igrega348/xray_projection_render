@@ -13,6 +13,7 @@ type Object interface {
 	ToMap() map[string]interface{}
 	FromMap(data map[string]interface{}) error
 	MinFeatureSize() float64
+	String() string
 }
 
 type Sphere struct {
@@ -21,6 +22,10 @@ type Sphere struct {
 	Center mgl64.Vec3
 	Radius float64
 	Rho    float64
+}
+
+func (s *Sphere) String() string {
+	return fmt.Sprintf("Sphere{Center: %v, Radius: %v, Rho: %v}", s.Center, s.Radius, s.Rho)
 }
 
 func (s *Sphere) ToMap() map[string]interface{} {
@@ -34,12 +39,15 @@ func (s *Sphere) ToMap() map[string]interface{} {
 
 func (s *Sphere) FromMap(data map[string]interface{}) error {
 	var ok bool
+	var err error
 	var slice []interface{}
 	if slice, ok = data["center"].([]interface{}); !ok {
 		return fmt.Errorf("center is not a Vec3")
 	}
 	for i, val := range slice {
-		s.Center[i] = val.(float64)
+		if s.Center[i], err = ToFloat64(val); err != nil {
+			return fmt.Errorf("center[%d] is not a float64", i)
+		}
 	}
 	if s.Radius, ok = data["radius"].(float64); !ok {
 		return fmt.Errorf("radius is not a float64")
@@ -72,6 +80,10 @@ type Cube struct {
 	Side   float64
 	Rho    float64
 	Box    Box
+}
+
+func (c *Cube) String() string {
+	return fmt.Sprintf("Cube{Center: %v, Side: %v, Rho: %v}", c.Center, c.Side, c.Rho)
 }
 
 func (c *Cube) ToMap() map[string]interface{} {
@@ -116,6 +128,10 @@ type Box struct {
 	Center mgl64.Vec3
 	Sides  mgl64.Vec3
 	Rho    float64
+}
+
+func (b *Box) String() string {
+	return fmt.Sprintf("Box{Center: %v, Sides: %v, Rho: %v}", b.Center, b.Sides, b.Rho)
 }
 
 func (b *Box) ToMap() map[string]interface{} {
@@ -171,6 +187,10 @@ type Parallelepiped struct {
 	V0, V1, V2 mgl64.Vec3
 	Rho        float64
 	mat        mgl64.Mat3 // matrix for coordinate transformation
+}
+
+func (p *Parallelepiped) String() string {
+	return fmt.Sprintf("Parallelepiped{Origin: %v, V0: %v, V1: %v, V2: %v, Rho: %v}", p.Origin, p.V0, p.V1, p.V2, p.Rho)
 }
 
 func (p *Parallelepiped) ToMap() map[string]interface{} {
@@ -267,6 +287,10 @@ type Cylinder struct {
 	Rho    float64
 }
 
+func (c *Cylinder) String() string {
+	return fmt.Sprintf("Cylinder{P0: %v, P1: %v, Radius: %v, Rho: %v}", c.P0, c.P1, c.Radius, c.Rho)
+}
+
 func (c *Cylinder) ToMap() map[string]interface{} {
 	return map[string]interface{}{
 		"type":   "cylinder",
@@ -331,6 +355,14 @@ type ObjectCollection struct {
 	Object
 	Objects        []Object
 	GreedyDensEval bool
+}
+
+func (oc *ObjectCollection) String() string {
+	if len(oc.Objects) > 5 {
+		return fmt.Sprintf("ObjectCollection with %d objects. GreedyDensEval=%v", len(oc.Objects), oc.GreedyDensEval)
+	} else {
+		return fmt.Sprintf("ObjectCollection{%v, GreedyDensEval=%v}", oc.Objects, oc.GreedyDensEval)
+	}
 }
 
 func (oc *ObjectCollection) ToMap() map[string]interface{} {
@@ -434,6 +466,10 @@ type UnitCell struct {
 	Xmin, Xmax, Ymin, Ymax, Zmin, Zmax float64
 }
 
+func (uc *UnitCell) String() string {
+	return fmt.Sprintf("UnitCell{Objects: {%v}, Xmin: %v, Xmax: %v, Ymin: %v, Ymax: %v, Zmin: %v, Zmax: %v}", uc.Objects.String(), uc.Xmin, uc.Xmax, uc.Ymin, uc.Ymax, uc.Zmin, uc.Zmax)
+}
+
 func (uc *UnitCell) Density(x, y, z float64) float64 {
 	// check if point is within bounds. But account for objects a bit smaller
 	if x < uc.Xmin || x > uc.Xmax || y < uc.Ymin || y > uc.Ymax || z < uc.Zmin || z > uc.Zmax {
@@ -493,6 +529,10 @@ type TessellatedObjColl struct {
 	// lattice is given by unit cell and bounds for tessellation
 	UC                                 UnitCell
 	Xmin, Xmax, Ymin, Ymax, Zmin, Zmax float64
+}
+
+func (l *TessellatedObjColl) String() string {
+	return fmt.Sprintf("TessellatedObjColl{UC: {%v}, Xmin: %v, Xmax: %v, Ymin: %v, Ymax: %v, Zmin: %v, Zmax: %v}", l.UC.String(), l.Xmin, l.Xmax, l.Ymin, l.Ymax, l.Zmin, l.Zmax)
 }
 
 func (l *TessellatedObjColl) ToMap() map[string]interface{} {
@@ -623,3 +663,36 @@ func MakeKelvin(rad float64, scale float64) UnitCell {
 // 	}
 // 	return Lattice{Objects: struts}
 // }
+
+type ObjectFactory struct{}
+
+func (of *ObjectFactory) Create(data map[string]interface{}) (Object, error) {
+	return NewObject(data)
+}
+
+func NewObject(data map[string]interface{}) (Object, error) {
+	var object Object
+	var err error
+	switch data["type"] {
+	case "sphere":
+		object = &Sphere{}
+	case "cube":
+		object = &Cube{}
+	case "box":
+		object = &Box{}
+	case "cylinder":
+		object = &Cylinder{}
+	case "parallelepiped":
+		object = &Parallelepiped{}
+	case "object_collection":
+		object = &ObjectCollection{}
+	case "tessellated_obj_coll":
+		object = &TessellatedObjColl{}
+	default:
+		return nil, fmt.Errorf("unknown object type `%v`", data["type"])
+	}
+	if err = object.FromMap(data); err != nil {
+		return nil, err
+	}
+	return object, nil
+}

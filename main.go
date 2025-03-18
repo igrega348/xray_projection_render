@@ -87,19 +87,19 @@ func load_deformation(fn string) error {
 // If object is not loaded correctly, the program will render blank scene.
 func load_object(fn string) error {
 	log.Info().Msgf("Loading object from '%s'", fn)
-	data, err := os.ReadFile(fn)
+	file_content, err := os.ReadFile(fn)
 	if err != nil {
 		log.Fatal().Err(err)
 	}
-	out := map[string]interface{}{}
+	data := map[string]interface{}{}
 	switch ext := fn[len(fn)-4:]; ext {
 	case "yaml":
-		err = yaml.Unmarshal(data, &out)
+		err = yaml.Unmarshal(file_content, &data)
 		if err != nil {
 			log.Error().Msgf("Error unmarshalling YAML: %v", err)
 		}
 	case "json":
-		err = json.Unmarshal(data, &out)
+		err = json.Unmarshal(file_content, &data)
 		if err != nil {
 			log.Error().Msgf("Error unmarshalling JSON: %v", err)
 		}
@@ -107,28 +107,13 @@ func load_object(fn string) error {
 		log.Warn().Msgf("Unknown file extension: %s", ext)
 	}
 	// based on the type of object, convert to the appropriate object
-	var obj objects.Object
-	switch out["type"] {
-	case "tessellated_obj_coll":
-		obj = &objects.TessellatedObjColl{}
-	case "object_collection":
-		obj = &objects.ObjectCollection{}
-	case "sphere":
-		obj = &objects.Sphere{}
-	case "cube":
-		obj = &objects.Cube{}
-	case "cylinder":
-		obj = &objects.Cylinder{}
-	case "parallelepiped":
-		obj = &objects.Parallelepiped{}
-	default:
-		log.Fatal().Msgf("Unknown object type: %v", out["type"])
-	}
-	err = obj.FromMap(out)
-	lat = append(lat, obj)
+	factory := &objects.ObjectFactory{}
+	obj, err := factory.Create(data)
 	if err != nil {
 		log.Error().Msgf("Error converting to object collection: %v", err)
 	}
+	log.Info().Msgf("Loaded object: %v", obj)
+	lat = append(lat, obj)
 	return err
 }
 
