@@ -139,6 +139,14 @@ The images will be saved independently, and all the transforms file can be combi
 
 Option `--text_progress` can be set for purely text-based indication of render progress for each image, instead of the deafult progress bar for the whole job; can be useful when running on servers.
 
+### Exporting volume grids
+
+We add a simple voxel exporter. If flag `--export_volume` is set, the executable will produce a voxel grid `volume.raw` at the end of rendering.
+The output is a simple binary array of length `res*res*res` and type `UINT8`, with dimensions arranged in `ZXY` order.
+If only voxel grid is required as output, one can set `--num_projections 0`
+
+
+
 ## Command line options
 
 | Option                    | Explanation                                                                                           |
@@ -162,6 +170,7 @@ Option `--text_progress` can be set for purely text-based indication of render p
 | --time_label [float]        | Label to pass to image metadata (default: 0)                                                          |
 | --text_progress           | Use text progress bar                                                                                 |
 | --transparency            | Enable transparency in output images                                                                  |
+| --export_volume            | Export voxel grid of resolution `res x res x res` from density. Save into file `volume.raw`          |
 | -v                        | Enable verbose logging                                                                                |
 | --help, -h                | Show help                                                                                             |
 
