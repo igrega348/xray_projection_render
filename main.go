@@ -262,6 +262,7 @@ func render(
 	deformation_file string,
 	time_label float64,
 	transparency bool,
+	export_volume bool,
 ) {
 	defer timer()()
 	wrt := os.Stdout
@@ -464,6 +465,37 @@ func render(
 	if err != nil {
 		log.Fatal().Msg("Error writing object.json to file")
 	}
+
+	if export_volume {
+		// export volume grid to file
+		log.Info().Msg("Assembling volume grid")
+		volume64 := make([]float64, res*res*res)
+		max_val = 0.0
+		for i := 0; i < res; i++ {
+			for j := 0; j < res; j++ {
+				for k := 0; k < res; k++ {
+					x := float64(i)/res_f*2.0 - 1.0
+					y := float64(j)/res_f*2.0 - 1.0
+					z := float64(k)/res_f*2.0 - 1.0
+					idx := k*res*res + i*res + j // ZYX order
+					volume64[idx] = density(x, y, z)
+					if volume64[idx] > max_val {
+						max_val = volume64[idx]
+					}
+				}
+			}
+		}
+		volume := make([]byte, len(volume64))
+		for i, v := range volume64 {
+			volume[i] = byte(v / max_val * 255)
+		}
+		volume_path := filepath.Join(filepath.Dir(output_dir), "volume.raw")
+		log.Info().Msgf("Writing volume to '%s'", volume_path)
+		err = os.WriteFile(volume_path, volume, 0644)
+		if err != nil {
+			log.Fatal().Msg("Error writing volume.raw to file")
+		}
+	}
 }
 
 func main() {
@@ -563,6 +595,10 @@ func main() {
 				Name:  "transparency",
 				Usage: "Enable transparency in output images",
 			},
+			&cli.BoolFlag{
+				Name:  "export_volume",
+				Usage: "Export volume grid to a file",
+			},
 			// verbose flag
 			&cli.BoolFlag{
 				Name:  "v",
@@ -604,6 +640,7 @@ func main() {
 				cCtx.String("deformation_file"),
 				cCtx.Float64("time_label"),
 				cCtx.Bool("transparency"),
+				cCtx.Bool("export_volume"),
 			)
 			return nil
 		},
