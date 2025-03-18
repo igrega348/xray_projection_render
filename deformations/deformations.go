@@ -11,6 +11,7 @@ type Deformation interface {
 	Apply(x, y, z float64) (float64, float64, float64)
 	ToMap() map[string]interface{}
 	FromMap(data map[string]interface{}) error
+	String() string
 }
 
 type GaussianDeformation struct {
@@ -19,6 +20,10 @@ type GaussianDeformation struct {
 	Sigmas     []float64
 	Centers    []float64
 	Type       string
+}
+
+func (g *GaussianDeformation) String() string {
+	return fmt.Sprintf("GaussianDeformation{Amplitudes: %v, Sigmas: %v, Centers: %v, Type: %s}", g.Amplitudes, g.Sigmas, g.Centers, g.Type)
 }
 
 func (g *GaussianDeformation) Apply(x, y, z float64) (float64, float64, float64) {
@@ -76,6 +81,10 @@ type LinearDeformation struct {
 	Type    string
 }
 
+func (l *LinearDeformation) String() string {
+	return fmt.Sprintf("LinearDeformation{Strains: %v, Type: %s}", l.Strains, l.Type)
+}
+
 func (l *LinearDeformation) Apply(x, y, z float64) (float64, float64, float64) {
 	_x := x + l.Strains[0]*x + l.Strains[5]*y + l.Strains[4]*z
 	_y := y + l.Strains[5]*x + l.Strains[1]*y + l.Strains[3]*z
@@ -109,6 +118,10 @@ type RigidDeformation struct {
 	Type          string
 }
 
+func (r *RigidDeformation) String() string {
+	return fmt.Sprintf("RigidDeformation{Displacements: %v, Type: %s}", r.Displacements, r.Type)
+}
+
 func (r *RigidDeformation) Apply(x, y, z float64) (float64, float64, float64) {
 	return x + r.Displacements[0], y + r.Displacements[1], z + r.Displacements[2]
 }
@@ -140,6 +153,10 @@ type SigmoidDeformation struct {
 	Lengthscale float64
 	Direction   string
 	Type        string
+}
+
+func (s *SigmoidDeformation) String() string {
+	return fmt.Sprintf("SigmoidDeformation{Amplitude: %f, Center: %f, Lengthscale: %f, Direction: %s, Type: %s}", s.Amplitude, s.Center, s.Lengthscale, s.Direction, s.Type)
 }
 
 func (s *SigmoidDeformation) Apply(x, y, z float64) (float64, float64, float64) {
@@ -191,6 +208,14 @@ func (s *SigmoidDeformation) FromMap(data map[string]interface{}) error {
 type ComposedDeformation struct {
 	Deformation
 	Deformations []Deformation
+}
+
+func (c *ComposedDeformation) String() string {
+	if len(c.Deformations) > 5 {
+		return fmt.Sprintf("ComposedDeformation of %d deformations", len(c.Deformations))
+	} else {
+		return fmt.Sprintf("ComposedDeformation{Deformations: %v}", c.Deformations)
+	}
 }
 
 func (c *ComposedDeformation) Apply(x, y, z float64) (float64, float64, float64) {
