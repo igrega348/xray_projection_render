@@ -218,6 +218,14 @@ func computePixel(img [][]float64, i, j int, origin, direction mgl64.Vec3, ds, s
 	img[i][j] = integrate(origin, direction, ds, smin, smax)
 }
 
+func computeVoxel(img []float64, i, j, k, res int, wg *sync.WaitGroup) {
+	defer wg.Done()
+	x := float64(i)/float64(res)*2.0 - 1.0
+	y := float64(j)/float64(res)*2.0 - 1.0
+	z := float64(k)/float64(res)*2.0 - 1.0
+	img[k*res*res+i*res+j] = density(x, y, z)
+}
+
 // Helper function to measure elapsed time.
 func timer() func() {
 	start := time.Now()
@@ -467,22 +475,42 @@ func render(
 	}
 
 	if export_volume {
-		// export volume grid to file
+		wg := sync.WaitGroup{}
 		log.Info().Msg("Assembling volume grid")
+		if text_progress {
+			wrt.Write([]byte("["))
+		} else {
+			bar = progressbar.Default(int64(res * res * res))
+		}
+		pix_step = (res * res * res) / 50
+		// export volume grid to file
 		volume64 := make([]float64, res*res*res)
-		max_val = 0.0
-		for i := 0; i < res; i++ {
-			for j := 0; j < res; j++ {
-				for k := 0; k < res; k++ {
-					x := float64(i)/res_f*2.0 - 1.0
-					y := float64(j)/res_f*2.0 - 1.0
-					z := float64(k)/res_f*2.0 - 1.0
-					idx := k*res*res + i*res + j // ZYX order
-					volume64[idx] = density(x, y, z)
-					if volume64[idx] > max_val {
-						max_val = volume64[idx]
+		for i := range res {
+			for j := range res {
+				for k := range res {
+					wg.Add(1)
+					go computeVoxel(volume64, i, j, k, res, &wg)
+					idx := k*res*res + i*res + j
+					if text_progress {
+						if (idx)%(pix_step) == 0 {
+							wrt.Write([]byte("-"))
+						}
+					} else {
+						bar.Add(1)
 					}
 				}
+			}
+		}
+		wg.Wait()
+
+		if text_progress {
+			wrt.Write([]byte("]\n"))
+		}
+		// normalize volume to [0, 255]
+		max_val = 0.0
+		for i := range volume64 {
+			if volume64[i] > max_val {
+				max_val = volume64[i]
 			}
 		}
 		volume := make([]byte, len(volume64))
