@@ -611,8 +611,9 @@ func main() {
 				Usage: "Enable transparency in output images",
 			},
 			&cli.BoolFlag{
-				Name:  "export_volume",
-				Usage: "Export volume grid to a file",
+				Name: "export_volume",
+				Usage: "Export voxel grid of resolution" +
+					" res x res x res from density. Save into file volume.raw",
 			},
 			// verbose flag
 			&cli.BoolFlag{
