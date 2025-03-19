@@ -132,7 +132,7 @@ For these reasons, the program can be run in parallel, with each instance only r
 For example, suppose we wish to generate 256 projections as 8 parallel jobs. This can be done by running 8 commands independently
 
 ```
-go run . --input object.yaml --jobs_modulo 4 --job [x] --transforms_file transforms_[x].json
+go run . --input object.yaml --jobs_modulo 8 --job [x] --transforms_file transforms_[x].json
 ```
 where `[x]` goes from 0 to 7.
 The images will be saved independently, and all the transforms file can be combined in a post-processing step.
