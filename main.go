@@ -228,6 +228,7 @@ type OneFrameParams struct {
 
 // Transform parameters for all images.
 type TransformParams struct {
+	FlatField   float64          `json:"flat_field"`
 	CameraAngle float64          `json:"camera_angle_x"`
 	FL_X        float64          `json:"fl_x"`
 	FL_Y        float64          `json:"fl_y"`
@@ -299,6 +300,7 @@ func render(
 	}
 
 	transform_params := TransformParams{
+		FlatField:   math.Exp(-flat_field),
 		CameraAngle: fov * math.Pi / 180.0,
 		W:           res,
 		H:           res,
