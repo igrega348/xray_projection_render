@@ -27,6 +27,11 @@ go.work
 *.json
 *.yaml
 *.raw
+*.npz
+*.npy
+
+# Build folder
+build/
 
 # PAT
 pat*
