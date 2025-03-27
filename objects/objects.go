@@ -390,43 +390,22 @@ func (oc *ObjectCollection) FromMap(data map[string]interface{}) error {
 		for i, object_data := range objects_data {
 			switch object_data.(map[string]interface{})["type"] {
 			case "sphere":
-				object := Sphere{}
-				if err := object.FromMap(object_data.(map[string]interface{})); err != nil {
-					return err
-				}
-				objects[i] = &object
+				objects[i] = &Sphere{}
 			case "cube":
-				object := Cube{}
-				if err := object.FromMap(object_data.(map[string]interface{})); err != nil {
-					return err
-				}
-				objects[i] = &object
+				objects[i] = &Cube{}
 			case "box":
-				object := Box{}
-				if err := object.FromMap(object_data.(map[string]interface{})); err != nil {
-					return err
-				}
-				objects[i] = &object
+				objects[i] = &Box{}
 			case "cylinder":
-				object := Cylinder{}
-				if err := object.FromMap(object_data.(map[string]interface{})); err != nil {
-					return err
-				}
-				objects[i] = &object
+				objects[i] = &Cylinder{}
 			case "parallelepiped":
-				object := Parallelepiped{}
-				if err := object.FromMap(object_data.(map[string]interface{})); err != nil {
-					return err
-				}
-				objects[i] = &object
+				objects[i] = &Parallelepiped{}
 			case "tessellated_obj_coll":
-				object := TessellatedObjColl{}
-				if err := object.FromMap(object_data.(map[string]interface{})); err != nil {
-					return err
-				}
-				objects[i] = &object
+				objects[i] = &TessellatedObjColl{}
 			default:
 				return fmt.Errorf("unknown object type")
+			}
+			if err := objects[i].FromMap(object_data.(map[string]interface{})); err != nil {
+				return err
 			}
 		}
 	} else {
