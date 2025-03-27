@@ -1,8 +1,13 @@
 package objects
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
 
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/rs/zerolog/log"
@@ -670,9 +675,76 @@ func (of *ObjectFactory) Create(data map[string]interface{}) (Object, error) {
 	return NewObject(data)
 }
 
+func VoxelGridFromFile(path string) (*VoxelGrid, error) {
+	// Check file extension
+	ext := strings.ToLower(path[strings.LastIndex(path, ".")+1:])
+	switch ext {
+	case "npy":
+		return VoxelGridFromNPY(path)
+	case "raw":
+		// For raw files, we need resolution information
+		// This should be provided in the YAML/JSON config
+		return nil, fmt.Errorf("raw files require resolution information in the config")
+	default:
+		return nil, fmt.Errorf("unsupported file format: %s", ext)
+	}
+}
+
+func VoxelGridFromNPY(path string) (*VoxelGrid, error) {
+	// Read the file
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("error reading file: %v", err)
+	}
+
+	// Parse the .npy header
+	// The header starts with a magic string and version
+	if len(data) < 8 || string(data[:6]) != "\x93NUMPY" {
+		return nil, fmt.Errorf("invalid .npy file format")
+	}
+
+	// Skip magic string and version
+	offset := 8
+
+	// Parse the header length (little-endian uint16)
+	headerLen := uint16(data[offset]) | uint16(data[offset+1])<<8
+	offset += 2
+
+	// Parse the header string
+	header := string(data[offset : offset+int(headerLen)])
+	offset += int(headerLen)
+
+	// Parse the shape from the header
+	// Example header: "{'descr': '<f4', 'fortran_order': False, 'shape': (64, 64, 64), }"
+	shapeMatch := regexp.MustCompile(`'shape':\s*\((\d+),\s*(\d+),\s*(\d+)\)`).FindStringSubmatch(header)
+	if len(shapeMatch) != 4 {
+		return nil, fmt.Errorf("could not parse shape from header")
+	}
+
+	nx, _ := strconv.Atoi(shapeMatch[1])
+	ny, _ := strconv.Atoi(shapeMatch[2])
+	nz, _ := strconv.Atoi(shapeMatch[3])
+
+	// Read the data as float32
+	rawData := data[offset:]
+	rho := make([]float64, nx*ny*nz)
+	for i := 0; i < len(rawData)/4; i++ {
+		rho[i] = float64(math.Float32frombits(binary.LittleEndian.Uint32(rawData[i*4 : (i+1)*4])))
+	}
+
+	return &VoxelGrid{
+		Rho: rho,
+		NX:  nx,
+		NY:  ny,
+		NZ:  nz,
+	}, nil
+}
+
 func NewObject(data map[string]interface{}) (Object, error) {
 	var object Object
 	var err error
+
+	// Handle regular object types
 	switch data["type"] {
 	case "sphere":
 		object = &Sphere{}
@@ -688,6 +760,8 @@ func NewObject(data map[string]interface{}) (Object, error) {
 		object = &ObjectCollection{}
 	case "tessellated_obj_coll":
 		object = &TessellatedObjColl{}
+	case "voxel_grid":
+		object = &VoxelGrid{}
 	default:
 		return nil, fmt.Errorf("unknown object type `%v`", data["type"])
 	}
@@ -695,4 +769,218 @@ func NewObject(data map[string]interface{}) (Object, error) {
 		return nil, err
 	}
 	return object, nil
+}
+
+type VoxelGrid struct {
+	Object
+	Rho []float64
+	NX  int
+	NY  int
+	NZ  int
+}
+
+func (v *VoxelGrid) String() string {
+	return fmt.Sprintf("VoxelGrid{NX: %d, NY: %d, NZ: %d}", v.NX, v.NY, v.NZ)
+}
+
+func (v *VoxelGrid) ToMap() map[string]interface{} {
+	return map[string]interface{}{
+		"type": "voxel_grid",
+		"nx":   v.NX,
+		"ny":   v.NY,
+		"nz":   v.NZ,
+		"rho":  v.Rho,
+	}
+}
+
+func (v *VoxelGrid) FromMap(data map[string]interface{}) error {
+	var ok bool
+	var err error
+
+	// Check if this is a file path
+	if path, ok := data["path"].(string); ok {
+		// Check file extension
+		ext := strings.ToLower(path[strings.LastIndex(path, ".")+1:])
+		if ext == "raw" {
+			// For raw files, we need resolution information
+			res_data, ok := data["resolution"].([]interface{})
+			if !ok {
+				return fmt.Errorf("resolution must be provided for raw files")
+			}
+			if len(res_data) != 3 {
+				return fmt.Errorf("resolution must be a list of 3 integers")
+			}
+			resolution := [3]int{}
+			for i, val := range res_data {
+				if resolution[i], ok = val.(int); !ok {
+					return fmt.Errorf("resolution[%d] is not an integer", i)
+				}
+			}
+			vg, err := VoxelGridFromRaw(path, resolution)
+			if err != nil {
+				return err
+			}
+			*v = *vg
+			return nil
+		}
+		// For npy files, use the existing loader
+		vg, err := VoxelGridFromFile(path)
+		if err != nil {
+			return err
+		}
+		*v = *vg
+		return nil
+	}
+
+	// Handle regular voxel grid creation
+	if v.NX, ok = data["nx"].(int); !ok {
+		return fmt.Errorf("nx is not an int")
+	}
+	if v.NY, ok = data["ny"].(int); !ok {
+		return fmt.Errorf("ny is not an int")
+	}
+	if v.NZ, ok = data["nz"].(int); !ok {
+		return fmt.Errorf("nz is not an int")
+	}
+	if rho_data, ok := data["rho"].([]interface{}); ok {
+		v.Rho = make([]float64, len(rho_data))
+		for i, val := range rho_data {
+			if v.Rho[i], err = ToFloat64(val); err != nil {
+				return fmt.Errorf("rho[%d] is not a float64", i)
+			}
+		}
+	} else {
+		return fmt.Errorf("rho is not a list")
+	}
+	return nil
+}
+
+func (v *VoxelGrid) Density(x, y, z float64) float64 {
+	// If outside of bounds, return 0
+	if x < -1 || x > 1 || y < -1 || y > 1 || z < -1 || z > 1 {
+		return 0.0
+	}
+	// Map from [-1,1] to [0,1]
+	x = (x + 1) / 2
+	y = (y + 1) / 2
+	z = (z + 1) / 2
+
+	// Map to voxel coordinates
+	x = x * float64(v.NX-1)
+	y = y * float64(v.NY-1)
+	z = z * float64(v.NZ-1)
+
+	// Get integer coordinates
+	x0 := int(math.Floor(x))
+	y0 := int(math.Floor(y))
+	z0 := int(math.Floor(z))
+	x1 := x0 + 1
+	y1 := y0 + 1
+	z1 := z0 + 1
+
+	// Clamp to bounds
+	if x0 < 0 {
+		x0 = 0
+	}
+	if y0 < 0 {
+		y0 = 0
+	}
+	if z0 < 0 {
+		z0 = 0
+	}
+	if x1 >= v.NX {
+		x1 = v.NX - 1
+	}
+	if y1 >= v.NY {
+		y1 = v.NY - 1
+	}
+	if z1 >= v.NZ {
+		z1 = v.NZ - 1
+	}
+
+	// Get interpolation weights
+	wx := x - float64(x0)
+	wy := y - float64(y0)
+	wz := z - float64(z0)
+
+	// Get voxel values
+	v000 := v.Rho[z0*v.NX*v.NY+y0*v.NX+x0]
+	v001 := v.Rho[z1*v.NX*v.NY+y0*v.NX+x0]
+	v010 := v.Rho[z0*v.NX*v.NY+y1*v.NX+x0]
+	v011 := v.Rho[z1*v.NX*v.NY+y1*v.NX+x0]
+	v100 := v.Rho[z0*v.NX*v.NY+y0*v.NX+x1]
+	v101 := v.Rho[z1*v.NX*v.NY+y0*v.NX+x1]
+	v110 := v.Rho[z0*v.NX*v.NY+y1*v.NX+x1]
+	v111 := v.Rho[z1*v.NX*v.NY+y1*v.NX+x1]
+
+	// Trilinear interpolation
+	v00 := v000*(1-wz) + v001*wz
+	v01 := v010*(1-wz) + v011*wz
+	v10 := v100*(1-wz) + v101*wz
+	v11 := v110*(1-wz) + v111*wz
+	v0 := v00*(1-wy) + v01*wy
+	v1 := v10*(1-wy) + v11*wy
+	return v0*(1-wx) + v1*wx
+}
+
+func (v *VoxelGrid) MinFeatureSize() float64 {
+	// Return the size of one voxel in normalized coordinates
+	return 2.0 / float64(max(v.NX, max(v.NY, v.NZ)))
+}
+
+func (v *VoxelGrid) ExportToRaw(path string, res int) error {
+	// Create volume grid
+	volume64 := make([]float64, res*res*res)
+	for i := 0; i < res; i++ {
+		for j := 0; j < res; j++ {
+			for k := 0; k < res; k++ {
+				x := float64(i)/float64(res)*2.0 - 1.0
+				y := float64(j)/float64(res)*2.0 - 1.0
+				z := float64(k)/float64(res)*2.0 - 1.0
+				volume64[k*res*res+i*res+j] = v.Density(x, y, z)
+			}
+		}
+	}
+
+	// Normalize volume to [0, 255]
+	max_val := 0.0
+	for i := range volume64 {
+		if volume64[i] > max_val {
+			max_val = volume64[i]
+		}
+	}
+	volume := make([]byte, len(volume64))
+	for i, v := range volume64 {
+		volume[i] = byte(v / max_val * 255)
+	}
+
+	// Write to file
+	return os.WriteFile(path, volume, 0644)
+}
+
+func VoxelGridFromRaw(path string, resolution [3]int) (*VoxelGrid, error) {
+	// Read the file
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("error reading file: %v", err)
+	}
+
+	// Check if file size matches expected size
+	expectedSize := resolution[0] * resolution[1] * resolution[2]
+	if len(data) != expectedSize {
+		return nil, fmt.Errorf("file size (%d) does not match expected size (%d)", len(data), expectedSize)
+	}
+
+	// Convert bytes to float64
+	rho := make([]float64, expectedSize)
+	for i, b := range data {
+		rho[i] = float64(b) / 255.0
+	}
+
+	return &VoxelGrid{
+		Rho: rho,
+		NX:  resolution[0],
+		NY:  resolution[1],
+		NZ:  resolution[2],
+	}, nil
 }
