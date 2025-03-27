@@ -684,10 +684,11 @@ func NewObject(data map[string]interface{}) (Object, error) {
 
 type VoxelGrid struct {
 	Object
-	Rho []float64
-	NX  int
-	NY  int
-	NZ  int
+	Rho  []float64
+	NX   int
+	NY   int
+	NZ   int
+	Path string // Path to the original raw file
 }
 
 func (v *VoxelGrid) String() string {
@@ -696,11 +697,12 @@ func (v *VoxelGrid) String() string {
 
 func (v *VoxelGrid) ToMap() map[string]interface{} {
 	return map[string]interface{}{
-		"type": "voxel_grid",
-		"nx":   v.NX,
-		"ny":   v.NY,
-		"nz":   v.NZ,
-		"rho":  v.Rho,
+		"type":  "voxel_grid",
+		"nx":    v.NX,
+		"ny":    v.NY,
+		"nz":    v.NZ,
+		"dtype": "float64", // Since we store as float64 internally
+		"path":  v.Path,    // Path to the original raw file
 	}
 }
 
@@ -754,6 +756,9 @@ func (v *VoxelGrid) FromMap(data map[string]interface{}) error {
 	}
 	if v.NZ, ok = data["nz"].(int); !ok {
 		return fmt.Errorf("nz is not an int")
+	}
+	if v.Path, ok = data["path"].(string); !ok {
+		return fmt.Errorf("path is not a string")
 	}
 	if rho_data, ok := data["rho"].([]interface{}); ok {
 		v.Rho = make([]float64, len(rho_data))
@@ -931,9 +936,10 @@ func VoxelGridFromRaw(path string, resolution [3]int, dtype string) (*VoxelGrid,
 	}
 
 	return &VoxelGrid{
-		Rho: rho,
-		NX:  resolution[0],
-		NY:  resolution[1],
-		NZ:  resolution[2],
+		Rho:  rho,
+		NX:   resolution[0],
+		NY:   resolution[1],
+		NZ:   resolution[2],
+		Path: path,
 	}, nil
 }
