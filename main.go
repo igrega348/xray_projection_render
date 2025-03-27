@@ -257,6 +257,7 @@ func render(
 	time_label float64,
 	transparency bool,
 	export_volume bool,
+	polar_angle float64,
 ) {
 	defer timer()()
 	wrt := os.Stdout
@@ -285,6 +286,8 @@ func render(
 	// Typically use out_of_plane views for test set
 	if out_of_plane {
 		log.Info().Msg("Random polar angle")
+	} else if polar_angle != 90.0 {
+		log.Info().Msgf("Fixed polar angle at %f degrees", polar_angle)
 	} else {
 		log.Info().Msg("Fixed polar angle at 90 degrees")
 	}
@@ -342,7 +345,7 @@ func render(
 			z := rand.Float64()*2 - 1
 			phi = math.Acos(z)
 		} else {
-			phi = math.Pi / 2.0
+			phi = mgl64.DegToRad(polar_angle)
 		}
 
 		// zero out img
@@ -538,7 +541,12 @@ func main() {
 			},
 			&cli.BoolFlag{
 				Name:  "out_of_plane",
-				Usage: "Generate out of plane projections",
+				Usage: "Generate out of plane projections (random polar angle)",
+			},
+			&cli.Float64Flag{
+				Name:  "polar_angle",
+				Usage: "Set custom polar angle in degrees (cannot be used with out_of_plane flag)",
+				Value: 90.0,
 			},
 			&cli.StringFlag{
 				Name:  "fname_pattern",
@@ -628,6 +636,12 @@ func main() {
 			} else {
 				zerolog.SetGlobalLevel(zerolog.WarnLevel)
 			}
+
+			// Check for conflicting flags
+			if cCtx.Bool("out_of_plane") && cCtx.Float64("polar_angle") != 90.0 {
+				log.Fatal().Msg("Cannot specify both --out_of_plane and a custom --polar_angle. Please use only one of these options.")
+			}
+
 			if cCtx.String("integration") == "simple" {
 				integrate = integrate_along_ray
 				log.Info().Msg("Using simple integration method")
@@ -657,6 +671,7 @@ func main() {
 				cCtx.Float64("time_label"),
 				cCtx.Bool("transparency"),
 				cCtx.Bool("export_volume"),
+				cCtx.Float64("polar_angle"),
 			)
 			return nil
 		},
