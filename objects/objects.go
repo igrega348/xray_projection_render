@@ -401,6 +401,8 @@ func (oc *ObjectCollection) FromMap(data map[string]interface{}) error {
 				objects[i] = &Parallelepiped{}
 			case "tessellated_obj_coll":
 				objects[i] = &TessellatedObjColl{}
+			case "voxel_grid":
+				objects[i] = &VoxelGrid{}
 			default:
 				return fmt.Errorf("unknown object type")
 			}
