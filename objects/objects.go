@@ -751,7 +751,14 @@ func (v *VoxelGrid) FromMap(data map[string]interface{}) error {
 				return fmt.Errorf("resolution[%d] is not an integer", i)
 			}
 		}
-		vg, err := VoxelGridFromRaw(path, resolution)
+
+		// Get data type from config, default to uint8
+		dtype := "uint8"
+		if dtype_str, ok := data["dtype"].(string); ok {
+			dtype = dtype_str
+		}
+
+		vg, err := VoxelGridFromRaw(path, resolution, dtype)
 		if err != nil {
 			return err
 		}
@@ -885,23 +892,63 @@ func (v *VoxelGrid) ExportToRaw(path string, res int) error {
 	return os.WriteFile(path, volume, 0644)
 }
 
-func VoxelGridFromRaw(path string, resolution [3]int) (*VoxelGrid, error) {
+func VoxelGridFromRaw(path string, resolution [3]int, dtype string) (*VoxelGrid, error) {
 	// Read the file
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("error reading file: %v", err)
 	}
 
-	// Check if file size matches expected size
-	expectedSize := resolution[0] * resolution[1] * resolution[2]
-	if len(data) != expectedSize {
-		return nil, fmt.Errorf("file size (%d) does not match expected size (%d)", len(data), expectedSize)
+	// Calculate expected size based on data type
+	var bytesPerElement int
+	switch dtype {
+	case "uint8":
+		bytesPerElement = 1
+	case "uint16":
+		bytesPerElement = 2
+	case "uint32":
+		bytesPerElement = 4
+	case "float32":
+		bytesPerElement = 4
+	case "float64":
+		bytesPerElement = 8
+	default:
+		return nil, fmt.Errorf("unsupported data type: %s", dtype)
 	}
 
-	// Convert bytes to float64
-	rho := make([]float64, expectedSize)
-	for i, b := range data {
-		rho[i] = float64(b) / 255.0
+	expectedSize := resolution[0] * resolution[1] * resolution[2] * bytesPerElement
+	if len(data) != expectedSize {
+		return nil, fmt.Errorf("file size (%d) does not match expected size (%d) for type %s", len(data), expectedSize, dtype)
+	}
+
+	// Convert bytes to float64 based on data type
+	rho := make([]float64, resolution[0]*resolution[1]*resolution[2])
+	switch dtype {
+	case "uint8":
+		for i, b := range data {
+			rho[i] = float64(b) / 255.0
+		}
+	case "uint16":
+		for i := 0; i < len(data); i += 2 {
+			val := uint16(data[i]) | uint16(data[i+1])<<8
+			rho[i/2] = float64(val) / 65535.0
+		}
+	case "uint32":
+		for i := 0; i < len(data); i += 4 {
+			val := uint32(data[i]) | uint32(data[i+1])<<8 | uint32(data[i+2])<<16 | uint32(data[i+3])<<24
+			rho[i/4] = float64(val) / 4294967295.0
+		}
+	case "float32":
+		for i := 0; i < len(data); i += 4 {
+			bits := uint32(data[i]) | uint32(data[i+1])<<8 | uint32(data[i+2])<<16 | uint32(data[i+3])<<24
+			rho[i/4] = float64(math.Float32frombits(bits))
+		}
+	case "float64":
+		for i := 0; i < len(data); i += 8 {
+			bits := uint64(data[i]) | uint64(data[i+1])<<8 | uint64(data[i+2])<<16 | uint64(data[i+3])<<24 |
+				uint64(data[i+4])<<32 | uint64(data[i+5])<<40 | uint64(data[i+6])<<48 | uint64(data[i+7])<<56
+			rho[i/8] = math.Float64frombits(bits)
+		}
 	}
 
 	return &VoxelGrid{
