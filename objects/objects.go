@@ -1,12 +1,9 @@
 package objects
 
 import (
-	"encoding/binary"
 	"fmt"
 	"math"
 	"os"
-	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/go-gl/mathgl/mgl64"
@@ -675,71 +672,6 @@ func (of *ObjectFactory) Create(data map[string]interface{}) (Object, error) {
 	return NewObject(data)
 }
 
-func VoxelGridFromFile(path string) (*VoxelGrid, error) {
-	// Check file extension
-	ext := strings.ToLower(path[strings.LastIndex(path, ".")+1:])
-	switch ext {
-	case "npy":
-		return VoxelGridFromNPY(path)
-	case "raw":
-		// For raw files, we need resolution information
-		// This should be provided in the YAML/JSON config
-		return nil, fmt.Errorf("raw files require resolution information in the config")
-	default:
-		return nil, fmt.Errorf("unsupported file format: %s", ext)
-	}
-}
-
-func VoxelGridFromNPY(path string) (*VoxelGrid, error) {
-	// Read the file
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("error reading file: %v", err)
-	}
-
-	// Parse the .npy header
-	// The header starts with a magic string and version
-	if len(data) < 8 || string(data[:6]) != "\x93NUMPY" {
-		return nil, fmt.Errorf("invalid .npy file format")
-	}
-
-	// Skip magic string and version
-	offset := 8
-
-	// Parse the header length (little-endian uint16)
-	headerLen := uint16(data[offset]) | uint16(data[offset+1])<<8
-	offset += 2
-
-	// Parse the header string
-	header := string(data[offset : offset+int(headerLen)])
-	offset += int(headerLen)
-
-	// Parse the shape from the header
-	// Example header: "{'descr': '<f4', 'fortran_order': False, 'shape': (64, 64, 64), }"
-	shapeMatch := regexp.MustCompile(`'shape':\s*\((\d+),\s*(\d+),\s*(\d+)\)`).FindStringSubmatch(header)
-	if len(shapeMatch) != 4 {
-		return nil, fmt.Errorf("could not parse shape from header")
-	}
-
-	nx, _ := strconv.Atoi(shapeMatch[1])
-	ny, _ := strconv.Atoi(shapeMatch[2])
-	nz, _ := strconv.Atoi(shapeMatch[3])
-
-	// Read the data as float32
-	rawData := data[offset:]
-	rho := make([]float64, nx*ny*nz)
-	for i := 0; i < len(rawData)/4; i++ {
-		rho[i] = float64(math.Float32frombits(binary.LittleEndian.Uint32(rawData[i*4 : (i+1)*4])))
-	}
-
-	return &VoxelGrid{
-		Rho: rho,
-		NX:  nx,
-		NY:  ny,
-		NZ:  nz,
-	}, nil
-}
-
 func NewObject(data map[string]interface{}) (Object, error) {
 	var object Object
 	var err error
@@ -801,30 +733,25 @@ func (v *VoxelGrid) FromMap(data map[string]interface{}) error {
 	if path, ok := data["path"].(string); ok {
 		// Check file extension
 		ext := strings.ToLower(path[strings.LastIndex(path, ".")+1:])
-		if ext == "raw" {
-			// For raw files, we need resolution information
-			res_data, ok := data["resolution"].([]interface{})
-			if !ok {
-				return fmt.Errorf("resolution must be provided for raw files")
-			}
-			if len(res_data) != 3 {
-				return fmt.Errorf("resolution must be a list of 3 integers")
-			}
-			resolution := [3]int{}
-			for i, val := range res_data {
-				if resolution[i], ok = val.(int); !ok {
-					return fmt.Errorf("resolution[%d] is not an integer", i)
-				}
-			}
-			vg, err := VoxelGridFromRaw(path, resolution)
-			if err != nil {
-				return err
-			}
-			*v = *vg
-			return nil
+		if ext != "raw" {
+			return fmt.Errorf("only raw files are supported")
 		}
-		// For npy files, use the existing loader
-		vg, err := VoxelGridFromFile(path)
+
+		// For raw files, we need resolution information
+		res_data, ok := data["resolution"].([]interface{})
+		if !ok {
+			return fmt.Errorf("resolution must be provided for raw files")
+		}
+		if len(res_data) != 3 {
+			return fmt.Errorf("resolution must be a list of 3 integers")
+		}
+		resolution := [3]int{}
+		for i, val := range res_data {
+			if resolution[i], ok = val.(int); !ok {
+				return fmt.Errorf("resolution[%d] is not an integer", i)
+			}
+		}
+		vg, err := VoxelGridFromRaw(path, resolution)
 		if err != nil {
 			return err
 		}
