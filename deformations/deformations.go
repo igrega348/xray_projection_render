@@ -69,6 +69,51 @@ func (g *GaussianDeformation) FromMap(data map[string]interface{}) error {
 	return nil
 }
 
+type AffineDeformation struct {
+	Deformation
+	Matrix [3][3]float64
+	Type   string
+}
+
+func (a *AffineDeformation) Apply(x, y, z float64) (float64, float64, float64) {
+	_x := a.Matrix[0][0]*x + a.Matrix[0][1]*y + a.Matrix[0][2]*z
+	_y := a.Matrix[1][0]*x + a.Matrix[1][1]*y + a.Matrix[1][2]*z
+	_z := a.Matrix[2][0]*x + a.Matrix[2][1]*y + a.Matrix[2][2]*z
+	return _x, _y, _z
+}
+
+func (a *AffineDeformation) ToMap() map[string]interface{} {
+	return map[string]interface{}{
+		"matrix": a.Matrix,
+		"type":   a.Type,
+	}
+}
+
+func (a *AffineDeformation) FromMap(data map[string]interface{}) error {
+	matrix, ok := data["matrix"].([]interface{})
+	if !ok {
+		return fmt.Errorf("matrix must be a list")
+	}
+	if len(matrix) != 3 {
+		return fmt.Errorf("matrix must have 3 rows")
+	}
+	a.Matrix = [3][3]float64{}
+	for i, row := range matrix {
+		rowData, ok := row.([]interface{})
+		if !ok {
+			return fmt.Errorf("matrix row must be a list")
+		}
+		if len(rowData) != 3 {
+			return fmt.Errorf("matrix row must have 3 elements")
+		}
+		for j, element := range rowData {
+			a.Matrix[i][j] = element.(float64)
+		}
+	}
+	a.Type = data["type"].(string)
+	return nil
+}
+
 type LinearDeformation struct {
 	Deformation
 	Strains []float64
@@ -253,6 +298,10 @@ func NewDeformation(data map[string]interface{}) (Deformation, error) {
 		c := &ComposedDeformation{}
 		err := c.FromMap(data)
 		return c, err
+	case "affine":
+		a := &AffineDeformation{}
+		err := a.FromMap(data)
+		return a, err
 	default:
 		return nil, fmt.Errorf("unknown deformation type")
 	}
