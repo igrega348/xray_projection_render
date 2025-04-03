@@ -87,19 +87,19 @@ func load_deformation(fn string) error {
 // If object is not loaded correctly, the program will render blank scene.
 func load_object(fn string) error {
 	log.Info().Msgf("Loading object from '%s'", fn)
-	data, err := os.ReadFile(fn)
+	file_content, err := os.ReadFile(fn)
 	if err != nil {
 		log.Fatal().Err(err)
 	}
-	out := map[string]interface{}{}
+	data := map[string]interface{}{}
 	switch ext := fn[len(fn)-4:]; ext {
 	case "yaml":
-		err = yaml.Unmarshal(data, &out)
+		err = yaml.Unmarshal(file_content, &data)
 		if err != nil {
 			log.Error().Msgf("Error unmarshalling YAML: %v", err)
 		}
 	case "json":
-		err = json.Unmarshal(data, &out)
+		err = json.Unmarshal(file_content, &data)
 		if err != nil {
 			log.Error().Msgf("Error unmarshalling JSON: %v", err)
 		}
@@ -107,28 +107,13 @@ func load_object(fn string) error {
 		log.Warn().Msgf("Unknown file extension: %s", ext)
 	}
 	// based on the type of object, convert to the appropriate object
-	var obj objects.Object
-	switch out["type"] {
-	case "tessellated_obj_coll":
-		obj = &objects.TessellatedObjColl{}
-	case "object_collection":
-		obj = &objects.ObjectCollection{}
-	case "sphere":
-		obj = &objects.Sphere{}
-	case "cube":
-		obj = &objects.Cube{}
-	case "cylinder":
-		obj = &objects.Cylinder{}
-	case "parallelepiped":
-		obj = &objects.Parallelepiped{}
-	default:
-		log.Fatal().Msgf("Unknown object type: %v", out["type"])
-	}
-	err = obj.FromMap(out)
-	lat = append(lat, obj)
+	factory := &objects.ObjectFactory{}
+	obj, err := factory.Create(data)
 	if err != nil {
 		log.Error().Msgf("Error converting to object collection: %v", err)
 	}
+	log.Info().Msgf("Loaded object: %v", obj)
+	lat = append(lat, obj)
 	return err
 }
 
@@ -218,6 +203,14 @@ func computePixel(img [][]float64, i, j int, origin, direction mgl64.Vec3, ds, s
 	img[i][j] = integrate(origin, direction, ds, smin, smax)
 }
 
+func computeVoxel(img []float64, i, j, k, res int, wg *sync.WaitGroup) {
+	defer wg.Done()
+	x := float64(i)/float64(res)*2.0 - 1.0
+	y := float64(j)/float64(res)*2.0 - 1.0
+	z := float64(k)/float64(res)*2.0 - 1.0
+	img[k*res*res+i*res+j] = density(x, y, z)
+}
+
 // Helper function to measure elapsed time.
 func timer() func() {
 	start := time.Now()
@@ -235,6 +228,7 @@ type OneFrameParams struct {
 
 // Transform parameters for all images.
 type TransformParams struct {
+	FlatField   float64          `json:"flat_field"`
 	CameraAngle float64          `json:"camera_angle_x"`
 	FL_X        float64          `json:"fl_x"`
 	FL_Y        float64          `json:"fl_y"`
@@ -262,6 +256,8 @@ func render(
 	deformation_file string,
 	time_label float64,
 	transparency bool,
+	export_volume bool,
+	polar_angle float64,
 ) {
 	defer timer()()
 	wrt := os.Stdout
@@ -290,6 +286,8 @@ func render(
 	// Typically use out_of_plane views for test set
 	if out_of_plane {
 		log.Info().Msg("Random polar angle")
+	} else if polar_angle != 90.0 {
+		log.Info().Msgf("Fixed polar angle at %f degrees", polar_angle)
 	} else {
 		log.Info().Msg("Fixed polar angle at 90 degrees")
 	}
@@ -305,6 +303,7 @@ func render(
 	}
 
 	transform_params := TransformParams{
+		FlatField:   math.Exp(-flat_field),
 		CameraAngle: fov * math.Pi / 180.0,
 		W:           res,
 		H:           res,
@@ -346,7 +345,7 @@ func render(
 			z := rand.Float64()*2 - 1
 			phi = math.Acos(z)
 		} else {
-			phi = math.Pi / 2.0
+			phi = mgl64.DegToRad(polar_angle)
 		}
 
 		// zero out img
@@ -414,7 +413,7 @@ func render(
 				}
 				c := color.RGBA64{uint16(val * 0xffff), uint16(val * 0xffff), uint16(val * 0xffff), alpha}
 				// image has origin at top left, so we need to flip the y coordinate
-				myImage.SetRGBA64(i, res-j, c)
+				myImage.SetRGBA64(i, res-j-1, c)
 				if val < min_val {
 					min_val = val
 				}
@@ -464,6 +463,57 @@ func render(
 	if err != nil {
 		log.Fatal().Msg("Error writing object.json to file")
 	}
+
+	if export_volume {
+		wg := sync.WaitGroup{}
+		log.Info().Msg("Assembling volume grid")
+		if text_progress {
+			wrt.Write([]byte("["))
+		} else {
+			bar = progressbar.Default(int64(res * res * res))
+		}
+		pix_step = (res * res * res) / 50
+		// export volume grid to file
+		volume64 := make([]float64, res*res*res)
+		for i := range res {
+			for j := range res {
+				for k := range res {
+					wg.Add(1)
+					go computeVoxel(volume64, i, j, k, res, &wg)
+					idx := k*res*res + i*res + j
+					if text_progress {
+						if (idx)%(pix_step) == 0 {
+							wrt.Write([]byte("-"))
+						}
+					} else {
+						bar.Add(1)
+					}
+				}
+			}
+		}
+		wg.Wait()
+
+		if text_progress {
+			wrt.Write([]byte("]\n"))
+		}
+		// normalize volume to [0, 255]
+		max_val = 0.0
+		for i := range volume64 {
+			if volume64[i] > max_val {
+				max_val = volume64[i]
+			}
+		}
+		volume := make([]byte, len(volume64))
+		for i, v := range volume64 {
+			volume[i] = byte(v / max_val * 255)
+		}
+		volume_path := filepath.Join(filepath.Dir(output_dir), "volume.raw")
+		log.Info().Msgf("Writing volume to '%s'", volume_path)
+		err = os.WriteFile(volume_path, volume, 0644)
+		if err != nil {
+			log.Fatal().Msg("Error writing volume.raw to file")
+		}
+	}
 }
 
 func main() {
@@ -491,7 +541,12 @@ func main() {
 			},
 			&cli.BoolFlag{
 				Name:  "out_of_plane",
-				Usage: "Generate out of plane projections",
+				Usage: "Generate out of plane projections (random polar angle)",
+			},
+			&cli.Float64Flag{
+				Name:  "polar_angle",
+				Usage: "Set custom polar angle in degrees (cannot be used with out_of_plane flag)",
+				Value: 90.0,
 			},
 			&cli.StringFlag{
 				Name:  "fname_pattern",
@@ -563,6 +618,11 @@ func main() {
 				Name:  "transparency",
 				Usage: "Enable transparency in output images",
 			},
+			&cli.BoolFlag{
+				Name: "export_volume",
+				Usage: "Export voxel grid of resolution" +
+					" res x res x res from density. Save into file volume.raw",
+			},
 			// verbose flag
 			&cli.BoolFlag{
 				Name:  "v",
@@ -576,6 +636,12 @@ func main() {
 			} else {
 				zerolog.SetGlobalLevel(zerolog.WarnLevel)
 			}
+
+			// Check for conflicting flags
+			if cCtx.Bool("out_of_plane") && cCtx.Float64("polar_angle") != 90.0 {
+				log.Fatal().Msg("Cannot specify both --out_of_plane and a custom --polar_angle. Please use only one of these options.")
+			}
+
 			if cCtx.String("integration") == "simple" {
 				integrate = integrate_along_ray
 				log.Info().Msg("Using simple integration method")
@@ -604,6 +670,8 @@ func main() {
 				cCtx.String("deformation_file"),
 				cCtx.Float64("time_label"),
 				cCtx.Bool("transparency"),
+				cCtx.Bool("export_volume"),
+				cCtx.Float64("polar_angle"),
 			)
 			return nil
 		},

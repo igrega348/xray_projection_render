@@ -2,14 +2,16 @@ package deformations
 
 import (
 	"fmt"
-	"log"
 	"math"
+
+	"github.com/rs/zerolog/log"
 )
 
 type Deformation interface {
 	Apply(x, y, z float64) (float64, float64, float64)
 	ToMap() map[string]interface{}
 	FromMap(data map[string]interface{}) error
+	String() string
 }
 
 type GaussianDeformation struct {
@@ -18,6 +20,10 @@ type GaussianDeformation struct {
 	Sigmas     []float64
 	Centers    []float64
 	Type       string
+}
+
+func (g *GaussianDeformation) String() string {
+	return fmt.Sprintf("GaussianDeformation{Amplitudes: %v, Sigmas: %v, Centers: %v, Type: %s}", g.Amplitudes, g.Sigmas, g.Centers, g.Type)
 }
 
 func (g *GaussianDeformation) Apply(x, y, z float64) (float64, float64, float64) {
@@ -120,6 +126,10 @@ type LinearDeformation struct {
 	Type    string
 }
 
+func (l *LinearDeformation) String() string {
+	return fmt.Sprintf("LinearDeformation{Strains: %v, Type: %s}", l.Strains, l.Type)
+}
+
 func (l *LinearDeformation) Apply(x, y, z float64) (float64, float64, float64) {
 	_x := x + l.Strains[0]*x + l.Strains[5]*y + l.Strains[4]*z
 	_y := y + l.Strains[5]*x + l.Strains[1]*y + l.Strains[3]*z
@@ -151,6 +161,10 @@ type RigidDeformation struct {
 	Deformation
 	Displacements []float64
 	Type          string
+}
+
+func (r *RigidDeformation) String() string {
+	return fmt.Sprintf("RigidDeformation{Displacements: %v, Type: %s}", r.Displacements, r.Type)
 }
 
 func (r *RigidDeformation) Apply(x, y, z float64) (float64, float64, float64) {
@@ -186,6 +200,10 @@ type SigmoidDeformation struct {
 	Type        string
 }
 
+func (s *SigmoidDeformation) String() string {
+	return fmt.Sprintf("SigmoidDeformation{Amplitude: %f, Center: %f, Lengthscale: %f, Direction: %s, Type: %s}", s.Amplitude, s.Center, s.Lengthscale, s.Direction, s.Type)
+}
+
 func (s *SigmoidDeformation) Apply(x, y, z float64) (float64, float64, float64) {
 	switch s.Direction {
 	case "x":
@@ -195,7 +213,7 @@ func (s *SigmoidDeformation) Apply(x, y, z float64) (float64, float64, float64) 
 	case "z":
 		return x, y, z + s.Amplitude/(1+math.Exp(-(z-s.Center)/s.Lengthscale))
 	default:
-		log.Fatal("Invalid direction")
+		log.Fatal().Msg("Invalid direction")
 		return 0, 0, 0
 	}
 }
@@ -235,6 +253,14 @@ func (s *SigmoidDeformation) FromMap(data map[string]interface{}) error {
 type ComposedDeformation struct {
 	Deformation
 	Deformations []Deformation
+}
+
+func (c *ComposedDeformation) String() string {
+	if len(c.Deformations) > 5 {
+		return fmt.Sprintf("ComposedDeformation of %d deformations", len(c.Deformations))
+	} else {
+		return fmt.Sprintf("ComposedDeformation{Deformations: %v}", c.Deformations)
+	}
 }
 
 func (c *ComposedDeformation) Apply(x, y, z float64) (float64, float64, float64) {
@@ -277,6 +303,11 @@ func (f *DeformationFactory) Create(data map[string]interface{}) (Deformation, e
 }
 
 func NewDeformation(data map[string]interface{}) (Deformation, error) {
+	if data["type"] == nil {
+		log.Error().Msgf("Error: deformation type is nil. Data: %v", data)
+		return nil, fmt.Errorf("deformation type is nil")
+	}
+
 	switch data["type"] {
 	case "gaussian":
 		g := &GaussianDeformation{}
@@ -303,7 +334,8 @@ func NewDeformation(data map[string]interface{}) (Deformation, error) {
 		err := a.FromMap(data)
 		return a, err
 	default:
-		return nil, fmt.Errorf("unknown deformation type")
+		log.Error().Msgf("Error: unknown deformation type %v. Data: %v", data["type"], data)
+		return nil, fmt.Errorf("unknown deformation type %v", data["type"])
 	}
 }
 

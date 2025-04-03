@@ -63,7 +63,12 @@ This file is readable using standard NeRF packages.
 Many options can be used to control the output. A few examples are:
 `--resolution`, `--density_multiplier`, `--text_progress`, `-v`.
 Two key parameters which specify the field of view and distance of the equivalent camera are `--fov` and `-R`.
-Setting `--out_of_plane` will generate a projection at random elevation angles. While this is not typical for X-ray computed tomography, it can be useful as a test set for the evaluation of NeRF reconstruction.
+The polar angle (elevation angle) of the camera can be controlled in three ways:
+1. Default: Fixed at 90° (horizontal plane)
+2. Random angles: Use `--out_of_plane` to generate projections at random elevation angles
+3. Custom angle: Use `--polar_angle` to set a specific elevation angle in degrees (cannot be used with `--out_of_plane`)
+
+While random angles are not typical for X-ray computed tomography, they can be useful as a test set for the evaluation of NeRF reconstruction.
 
 ### Hierarchical integration (ray tracing)
 
@@ -132,12 +137,20 @@ For these reasons, the program can be run in parallel, with each instance only r
 For example, suppose we wish to generate 256 projections as 8 parallel jobs. This can be done by running 8 commands independently
 
 ```
-go run . --input object.yaml --jobs_modulo 4 --job [x] --transforms_file transforms_[x].json
+go run . --input object.yaml --jobs_modulo 8 --job [x] --transforms_file transforms_[x].json
 ```
 where `[x]` goes from 0 to 7.
 The images will be saved independently, and all the transforms file can be combined in a post-processing step.
 
 Option `--text_progress` can be set for purely text-based indication of render progress for each image, instead of the deafult progress bar for the whole job; can be useful when running on servers.
+
+### Exporting volume grids
+
+We add a simple voxel exporter. If flag `--export_volume` is set, the executable will produce a voxel grid `volume.raw` at the end of rendering.
+The output is a simple binary array of length `res*res*res` and type `UINT8`, with dimensions arranged in `ZXY` order.
+If only voxel grid is required as output, one can set `--num_projections 0`
+
+
 
 ## Command line options
 
@@ -147,7 +160,8 @@ Option `--text_progress` can be set for purely text-based indication of render p
 | --input [str]             | Input yaml file describing the object                                                                 |
 | --num_projections [int]   | Number of projections to generate (default: 1)                                                        |
 | --resolution [int]        | Resolution of the square output images (default: 512)                                                 |
-| --out_of_plane            | Generate out of plane projections                                                                     |
+| --out_of_plane            | Generate out of plane projections (random polar angle)                                                |
+| --polar_angle [float]     | Set custom polar angle in degrees (cannot be used with out_of_plane flag) (default: 90.0)            |
 | --fname_pattern [str]     | Sprintf pattern for output file name (default: "image_%03d.png")                                      |
 | --ds [float]                | Integration step size. If negative, try to infer from smallest feature size in the input file (default: -1) |
 | -R [float]                  | Distance between camera and centre of scene (default: 5)                                              |
@@ -162,6 +176,7 @@ Option `--text_progress` can be set for purely text-based indication of render p
 | --time_label [float]        | Label to pass to image metadata (default: 0)                                                          |
 | --text_progress           | Use text progress bar                                                                                 |
 | --transparency            | Enable transparency in output images                                                                  |
+| --export_volume            | Export voxel grid of resolution `res x res x res` from density. Save into file `volume.raw`          |
 | -v                        | Enable verbose logging                                                                                |
 | --help, -h                | Show help                                                                                             |
 
