@@ -399,6 +399,8 @@ func (oc *ObjectCollection) FromMap(data map[string]interface{}) error {
 				objects[i] = &Cylinder{}
 			case "parallelepiped":
 				objects[i] = &Parallelepiped{}
+			case "gyroid":
+				objects[i] = &Gyroid{}
 			case "tessellated_obj_coll":
 				objects[i] = &TessellatedObjColl{}
 			case "voxel_grid":
@@ -669,6 +671,8 @@ func NewObject(data map[string]interface{}) (Object, error) {
 		object = &Cylinder{}
 	case "parallelepiped":
 		object = &Parallelepiped{}
+	case "gyroid":
+		object = &Gyroid{}
 	case "object_collection":
 		object = &ObjectCollection{}
 	case "tessellated_obj_coll":
@@ -944,4 +948,83 @@ func VoxelGridFromRaw(path string, resolution [3]int, dtype string) (*VoxelGrid,
 		NZ:   resolution[2],
 		Path: path,
 	}, nil
+}
+
+type Gyroid struct {
+	Object
+	// parameters are center, scale, and thickness
+	Center    mgl64.Vec3
+	Scale     float64
+	Thickness float64
+	Rho       float64
+}
+
+func (g *Gyroid) String() string {
+	return fmt.Sprintf("Gyroid{Center: %v, Scale: %v, Thickness: %v, Rho: %v}", g.Center, g.Scale, g.Thickness, g.Rho)
+}
+
+func (g *Gyroid) ToMap() map[string]interface{} {
+	return map[string]interface{}{
+		"type":      "gyroid",
+		"center":    g.Center,
+		"scale":     g.Scale,
+		"thickness": g.Thickness,
+		"rho":       g.Rho,
+	}
+}
+
+func (g *Gyroid) FromMap(data map[string]interface{}) error {
+	var ok bool
+	var err error
+
+	// Handle center - try Vec3, []interface{}, and []float64
+	if vec, ok := data["center"].(mgl64.Vec3); ok {
+		g.Center = vec
+	} else if slice, ok := data["center"].([]interface{}); ok {
+		for i, val := range slice {
+			if g.Center[i], err = ToFloat64(val); err != nil {
+				return fmt.Errorf("center[%d] is not a float64", i)
+			}
+		}
+	} else if slice, ok := data["center"].([]float64); ok {
+		copy(g.Center[:], slice)
+	} else {
+		return fmt.Errorf("center is not a Vec3")
+	}
+
+	if g.Scale, ok = data["scale"].(float64); !ok {
+		return fmt.Errorf("scale is not a float64")
+	}
+	if g.Thickness, ok = data["thickness"].(float64); !ok {
+		return fmt.Errorf("thickness is not a float64")
+	}
+	if g.Rho, ok = data["rho"].(float64); !ok {
+		return fmt.Errorf("rho is not a float64")
+	}
+	return nil
+}
+
+func (g *Gyroid) Density(x, y, z float64) float64 {
+	// Transform to gyroid coordinates
+	x = (x - g.Center[0]) / g.Scale
+	y = (y - g.Center[1]) / g.Scale
+	z = (z - g.Center[2]) / g.Scale
+
+	// Gyroid surface equation: sin(x)cos(y) + sin(y)cos(z) + sin(z)cos(x) = 0
+	gyroid_value := math.Sin(x)*math.Cos(y) + math.Sin(y)*math.Cos(z) + math.Sin(z)*math.Cos(x)
+
+	// Convert to density based on thickness
+	// The gyroid centre surface is where gyroid_value = 0
+	if math.Abs(gyroid_value) < g.Thickness {
+		// Inside the surface
+		return g.Rho
+	} else {
+		// Outside the gyroid surface
+		return 0.0
+	}
+}
+
+func (g *Gyroid) MinFeatureSize() float64 {
+	// The minimum feature size is related to the scale and thickness
+	return g.Scale * g.Thickness * 0.1
 }

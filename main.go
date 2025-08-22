@@ -561,12 +561,12 @@ func main() {
 			&cli.Float64Flag{
 				Name:  "R",
 				Usage: "Distance between camera and centre of scene",
-				Value: 5.0,
+				Value: 4.0,
 			},
 			&cli.Float64Flag{
 				Name:  "fov",
 				Usage: "Field of view in degrees",
-				Value: 45.0,
+				Value: 40.0,
 			},
 			&cli.StringFlag{
 				Name:  "integration",

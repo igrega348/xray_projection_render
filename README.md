@@ -44,12 +44,15 @@ The supported objects have the following attributes
 | cube          | center[3], side, rho, type=cube |
 | box           | center[3], sides[3], rho, type=box |
 | parallelepiped | origin[3], v0[3], v1[3], v2[3], rho, type=parallelepiped |
+| gyroid        | center[3], scale, thickness, rho, type=gyroid |
 | object_collection | objects[*], type=object_collection |
 | unit_cell     | objects::object_collection, xmin, xmax, ymin, ymax, zmin, zmax, type=unit_cell |
 | tessellated_obj_coll | uc::unit_cell, xmin, xmax, ymin, ymax, zmin, zmax, type=tessellated_obj_coll |
 
 Where appropriate, attribute types are denoted by `::`, and corresponding array length by square brackets `[]`.
 All object types can be found in the examples provided in the `examples` directory.
+
+**Note on the gyroid object**: The gyroid is a triply periodic minimal surface defined by the equation sin(x)cos(y) + sin(y)cos(z) + sin(z)cos(x) < C. The `scale` parameter controls the periodicity, while `thickness=C` controls the thickness of the surface. The gyroid can be used with `tessellated_obj_coll` to limit the x,y,z max and min.
 
 ### Simulate tomographic X-ray projections
 
@@ -166,8 +169,8 @@ If only voxel grid is required as output, one can set `--num_projections 0`
 | --polar_angle [float]     | Set custom polar angle in degrees (cannot be used with out_of_plane flag) (default: 90.0)            |
 | --fname_pattern [str]     | Sprintf pattern for output file name (default: "image_%03d.png")                                      |
 | --ds [float]                | Integration step size. If negative, try to infer from smallest feature size in the input file (default: -1) |
-| -R [float]                  | Distance between camera and centre of scene (default: 5)                                              |
-| --fov [float]               | Field of view in degrees (default: 45)                                                                |
+| -R [float]                  | Distance between camera and centre of scene (default: 4)                                              |
+| --fov [float]               | Field of view in degrees (default: 40)                                                                |
 | --integration [str]       | Integration method to use. Options are 'simple' or 'hierarchical'. (default: "hierarchical")          |
 | --flat_field [float]        | Flat field value to add to all pixels (default: 0)                                                    |
 | --jobs_modulo [int]       | Number of jobs which are being run independently (e.g. jobs_modulo=4 will render every 4th projection) (default: 1) |

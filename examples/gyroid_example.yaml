@@ -1,0 +1,21 @@
+type: tessellated_obj_coll
+uc:
+  objects:
+    objects:
+    - type: gyroid
+      center: [0.0, 0.0, 0.0]
+      scale: 0.1
+      thickness: 0.2
+      rho: 1.0
+  xmin: -1.0
+  xmax: 1.0
+  ymin: -1.0
+  ymax: 1.0
+  zmin: -1.0
+  zmax: 1.0
+xmin: -0.8
+xmax: 0.8
+ymin: -0.8
+ymax: 0.8
+zmin: -0.8
+zmax: 0.8
