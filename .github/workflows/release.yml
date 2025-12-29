@@ -39,18 +39,12 @@ jobs:
         run: |
           GOOS=linux GOARCH=amd64 go build -o build/xray_projection_render_linux-amd64 main.go api.go
       
-      # Build shared libraries for all platforms
-      - name: Build shared library for darwin/arm64
+      # Build shared library for native platform (linux/amd64) only
+      # Note: Cross-compiling shared libraries with CGO requires cross-compiler toolchains
+      # which are not available in GitHub Actions. Only build for native platform.
+      - name: Build shared library for linux/amd64 (native)
         run: |
-          GOOS=darwin GOARCH=arm64 go build -buildmode=c-shared -o build/libxray_projection_render_darwin-arm64 .
-      
-      - name: Build shared library for windows/amd64
-        run: |
-          GOOS=windows GOARCH=amd64 go build -buildmode=c-shared -o build/libxray_projection_render_windows-amd64 .
-      
-      - name: Build shared library for linux/amd64
-        run: |
-          GOOS=linux GOARCH=amd64 go build -buildmode=c-shared -o build/libxray_projection_render_linux-amd64 .
+          CGO_ENABLED=1 go build -buildmode=c-shared -o build/libxray_projection_render_linux-amd64 .
       
       - name: List build artifacts
         run: ls -lh build/
@@ -77,17 +71,13 @@ jobs:
             - `xray_projection_render_linux-amd64` - Linux (x64)
             
             ### Shared Libraries
-            - `libxray_projection_render_darwin-arm64.dylib` + `.h` - macOS (Apple Silicon)
-            - `libxray_projection_render_windows-amd64.dll` + `.h` - Windows (x64)
-            - `libxray_projection_render_linux-amd64.so` + `.h` - Linux (x64)
+            - `libxray_projection_render_linux-amd64.so` + `.h` - Linux (x64) - Native build only
+            
+            Note: Shared libraries for macOS and Windows require native builds with CGO toolchains and are not included in this release.
           files: |
             build/xray_projection_render_darwin-arm64
             build/xray_projection_render_windows-amd64.exe
             build/xray_projection_render_linux-amd64
-            build/libxray_projection_render_darwin-arm64.dylib
-            build/libxray_projection_render_darwin-arm64.h
-            build/libxray_projection_render_windows-amd64.dll
-            build/libxray_projection_render_windows-amd64.h
             build/libxray_projection_render_linux-amd64.so
             build/libxray_projection_render_linux-amd64.h
           draft: false

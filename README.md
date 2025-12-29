@@ -12,6 +12,30 @@ On the right is a stack of projections of the same object with a deformation fie
 
 ![out_f](https://github.com/user-attachments/assets/21c0b6d2-65ee-4762-b615-9ad053aef82e)
 
+## Installation
+
+### Pre-built Executables
+
+Pre-built executables for macOS (Apple Silicon), Windows (x64), and Linux (x64) are available in [GitHub releases](https://github.com/igrega348/xray_projection_render/releases). Simply download the appropriate executable for your platform.
+
+### Building from Source
+
+To build from source, you'll need Go 1.22.1 or later:
+
+```bash
+git clone https://github.com/igrega348/xray_projection_render.git
+cd xray_projection_render
+go build -o xray_projection_render main.go api.go
+```
+
+### Python Bindings
+
+For Python usage, you'll need the shared library:
+- **Linux users**: Pre-built shared libraries are available in [GitHub releases](https://github.com/igrega348/xray_projection_render/releases)
+- **macOS/Windows users**: You must build the shared library from source (see [Python Usage Guide](PYTHON_USAGE.md))
+
+**Note**: Only Linux shared libraries are included in releases due to CGO cross-compilation limitations. macOS and Windows users need to build natively on their platforms.
+
 ## Quickstart
 
 The renderer can be used either from the command line (CLI) or programmatically from Python.
@@ -35,7 +59,9 @@ To see all available options, run:
 
 ### Python Interface
 
-After building the shared library (see [Python Usage Guide](PYTHON_USAGE.md)), you can use the renderer from Python:
+The Python interface requires a shared library. Pre-built Linux shared libraries are available in [GitHub releases](https://github.com/igrega348/xray_projection_render/releases). For other platforms, you'll need to build the shared library from source (see [Python Usage Guide](PYTHON_USAGE.md)).
+
+**Note**: Only Linux (amd64) shared libraries are available in releases due to CGO cross-compilation limitations. For macOS and Windows, you'll need to build the shared library natively on those platforms.
 
 ```python
 from xray_renderer import XRayRenderer

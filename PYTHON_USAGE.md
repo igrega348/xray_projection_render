@@ -7,9 +7,17 @@ This guide explains how to use the Python bindings for `xray_projection_render`.
 1. **Build the shared library**: The Go code must be compiled as a shared library first.
 2. **Python 3.6+**: The bindings use standard library modules (`ctypes`, `json`, `pathlib`).
 
-## Step 1: Build the Shared Library
+## Step 1: Get the Shared Library
 
-First, you need to build the shared library. The build script will create the necessary files:
+### Option A: Download from Releases (Linux only)
+
+Pre-built Linux (amd64) shared libraries are available in [GitHub releases](https://github.com/igrega348/xray_projection_render/releases). Download `libxray_projection_render_linux-amd64.so` and `libxray_projection_render_linux-amd64.h`, then place them in the `build/` directory.
+
+**Note**: Only Linux shared libraries are available in releases due to CGO cross-compilation limitations. For macOS and Windows, you must build from source (see Option B).
+
+### Option B: Build from Source
+
+If you're on macOS or Windows, or need a different architecture, you'll need to build the shared library from source:
 
 ```bash
 cd xray_projection_render
@@ -177,11 +185,13 @@ print(f"Rendered {result['num_images']} views")
 
 If you get `FileNotFoundError: Library not found at ...`, check:
 
-1. **Build the shared library**: Make sure you've run `./build.sh` or built the library manually
+1. **Get the shared library**: 
+   - **Linux**: Download from [GitHub releases](https://github.com/igrega348/xray_projection_render/releases) (only Linux libraries are available)
+   - **macOS/Windows**: Build from source using `./build.sh` or manually (see below)
 2. **Check the path**: The bindings look in `build/` directory relative to `xray_renderer.py`
 3. **Platform-specific naming**: 
    - macOS: `libxray_projection_render.dylib` or `libxray_projection_render` (no extension)
-   - Linux: `libxray_projection_render.so`
+   - Linux: `libxray_projection_render.so` or `libxray_projection_render_linux-amd64.so` (from releases)
    - Windows: `xray_projection_render.dll`
 
 ### Building the Shared Library Manually
