@@ -123,6 +123,7 @@ The `render()` method accepts a dictionary with the following parameters:
 - **`density_multiplier`** (float): Density multiplier (default: `1.0`)
 - **`flat_field`** (float): Flat field value (default: `0.0`)
 - **`integration`** (str): Integration method `"simple"` or `"hierarchical"` (default: `"hierarchical"`)
+- **`log_level`** (str): Logging level - `"trace"`, `"debug"`, `"info"`, `"warn"`, `"error"`, `"fatal"`, `"panic"`, or `"disabled"` (default: `"error"` for quiet operation)
 
 ### Equispaced Angle Generation Parameters
 (Used when `camera_angles` is not provided)
@@ -173,11 +174,42 @@ params = {
     'input': 'examples/cube_w_hole.yaml',
     'output_dir': 'spiral_views',
     'resolution': 512,
+    'log_level': 'info',  # Set to 'info' to see progress messages, or 'error' for quiet operation
 }
 
 result = renderer.render(params, camera_angles=camera_angles)
 print(f"Rendered {result['num_images']} views")
 ```
+
+## Controlling Logging Output
+
+By default, the Python API runs in quiet mode (log level `"error"`), which only shows error messages. This prevents the verbose JSON log messages from cluttering your output.
+
+You can control the logging level using the `log_level` parameter:
+
+```python
+# Quiet mode (default) - only errors shown
+params = {'input': 'object.yaml', 'log_level': 'error'}
+
+# Show info messages (includes progress and status updates)
+params = {'input': 'object.yaml', 'log_level': 'info'}
+
+# Show debug messages (very verbose, includes detailed information)
+params = {'input': 'object.yaml', 'log_level': 'debug'}
+
+# Disable all logging
+params = {'input': 'object.yaml', 'log_level': 'disabled'}
+```
+
+Valid log levels (from least to most verbose):
+- `"disabled"` - No logging
+- `"error"` - Only errors (default for Python API)
+- `"warn"` - Warnings and errors
+- `"info"` - Info, warnings, and errors (shows progress messages)
+- `"debug"` - Debug, info, warnings, and errors (very verbose)
+- `"trace"` - All messages (most verbose)
+
+Note: Log messages are written to stderr, so they won't interfere with the return value from `render()`.
 
 ## Troubleshooting
 

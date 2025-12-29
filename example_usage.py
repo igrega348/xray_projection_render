@@ -37,6 +37,7 @@ def main():
         'resolution': 256,  # Lower resolution for faster testing
         'R': 4.0,
         'fov': 40.0,
+        'log_level': 'error',  # Quiet operation (only errors). Use 'info' for verbose output
     }
     
     # Define custom camera angles (azimuthal, polar in degrees)

@@ -132,6 +132,7 @@ class XRayRenderer:
                 - density_multiplier: Density multiplier (default: 1.0)
                 - flat_field: Flat field value (default: 0.0)
                 - integration: Integration method "simple" or "hierarchical" (default: "hierarchical")
+                - log_level: Logging level - "trace", "debug", "info", "warn", "error", "fatal", "panic", or "disabled" (default: "error" for quiet operation)
             camera_angles: Optional list of camera angle dictionaries with 'azimuthal' and 'polar' keys.
                           If provided, overrides num_images/out_of_plane/polar_angle parameters.
         
@@ -164,6 +165,7 @@ class XRayRenderer:
             "density_multiplier": params.get("density_multiplier", 1.0),
             "flat_field": params.get("flat_field", 0.0),
             "integration": params.get("integration", "hierarchical"),
+            "log_level": params.get("log_level", "error"),  # Default to quiet (only errors)
             "camera_angles": [],
         }
         
