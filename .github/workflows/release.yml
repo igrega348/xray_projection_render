@@ -45,9 +45,42 @@ jobs:
       - name: Build shared library for linux/amd64 (native)
         run: |
           CGO_ENABLED=1 go build -buildmode=c-shared -o build/libxray_projection_render_linux-amd64 .
+          # Go may create the file with or without .so extension depending on the output name
+          # Ensure it has the .so extension for standard Linux shared library naming
+          if [ -f build/libxray_projection_render_linux-amd64 ] && [ ! -f build/libxray_projection_render_linux-amd64.so ]; then
+            mv build/libxray_projection_render_linux-amd64 build/libxray_projection_render_linux-amd64.so
+            echo "Renamed library file to include .so extension"
+          fi
+          # Verify both output files were created
+          if [ ! -f build/libxray_projection_render_linux-amd64.so ]; then
+            echo "ERROR: Shared library .so file was not created!"
+            ls -la build/ | grep libxray
+            exit 1
+          fi
+          if [ ! -f build/libxray_projection_render_linux-amd64.h ]; then
+            echo "ERROR: Header .h file was not created!"
+            exit 1
+          fi
+          echo "✓ Shared library build successful"
       
       - name: List build artifacts
         run: ls -lh build/
+      
+      - name: Verify shared library files exist
+        run: |
+          echo "Checking for shared library files..."
+          ls -lh build/libxray_projection_render_linux-amd64* || true
+          if [ ! -f build/libxray_projection_render_linux-amd64.so ]; then
+            echo "ERROR: .so file not found!"
+            ls -la build/ | grep libxray
+            exit 1
+          fi
+          if [ ! -f build/libxray_projection_render_linux-amd64.h ]; then
+            echo "ERROR: .h file not found!"
+            exit 1
+          fi
+          echo "✓ Both shared library files found"
+          ls -lh build/libxray_projection_render_linux-amd64.*
       
       # Extract tag name (remove 'refs/tags/' prefix)
       - name: Extract tag name
