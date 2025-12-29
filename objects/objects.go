@@ -179,7 +179,7 @@ func (b *Box) Density(x, y, z float64) float64 {
 }
 
 func (b *Box) MinFeatureSize() float64 {
-	return math.Min(b.Sides[0], math.Min(b.Sides[1], b.Sides[2]))
+	return 0.1 * math.Min(b.Sides[0], math.Min(b.Sides[1], b.Sides[2]))
 }
 
 type Parallelepiped struct {

@@ -35,3 +35,6 @@ build/
 
 # PAT
 pat*
+
+# Python cache
+__pycache__/

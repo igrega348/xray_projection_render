@@ -18,6 +18,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -219,6 +220,69 @@ func timer() func() {
 	}
 }
 
+// computeCameraFromAngles computes the camera position and transform matrix from azimuthal and polar angles.
+// Returns the camera eye position and the 4x4 transform matrix.
+func computeCameraFromAngles(azimuthalDeg, polarDeg, R float64) (mgl64.Vec3, mgl64.Mat4) {
+	th := mgl64.DegToRad(azimuthalDeg)
+	phi := mgl64.DegToRad(polarDeg)
+	eye := mgl64.Vec3{
+		R * math.Cos(th) * math.Sin(phi),
+		R * math.Sin(th) * math.Sin(phi),
+		math.Cos(phi) * R,
+	}
+	center := mgl64.Vec3{0, 0, 0}
+	up := mgl64.Vec3{0, 0, 1}
+	camera := mgl64.LookAtV(eye, center, up)
+	camera = camera.Inv()
+	return eye, camera
+}
+
+// generateCameraAngles creates a list of camera angles using automatic generation (equispaced or random).
+func generateCameraAngles(num_images int, job_num int, jobs_modulo int, out_of_plane bool, polar_angle float64) []CameraAngle {
+	angles := []CameraAngle{}
+	for i_img := job_num; i_img < num_images; i_img += jobs_modulo {
+		dth := 360.0 / float64(num_images)
+		th := float64(i_img)*dth + 90.0
+		var phi float64
+		if out_of_plane {
+			z := rand.Float64()*2 - 1
+			phi = math.Acos(z) * 180.0 / math.Pi // convert to degrees
+		} else {
+			phi = polar_angle
+		}
+		angles = append(angles, CameraAngle{Azimuthal: th, Polar: phi})
+	}
+	return angles
+}
+
+// parseFloatList parses a comma-separated string of floats.
+func parseFloatList(s string) ([]float64, error) {
+	if s == "" {
+		return nil, nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]float64, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		var val float64
+		_, err := fmt.Sscanf(part, "%f", &val)
+		if err != nil {
+			return nil, fmt.Errorf("invalid float value '%s': %v", part, err)
+		}
+		result = append(result, val)
+	}
+	return result, nil
+}
+
+// CameraAngle represents a camera viewing angle with azimuthal and polar components.
+type CameraAngle struct {
+	Azimuthal float64 // Azimuthal angle in degrees (theta)
+	Polar     float64 // Polar angle in degrees (phi)
+}
+
 // Parameters for each image.
 type OneFrameParams struct {
 	FilePath        string      `json:"file_path"`
@@ -240,6 +304,7 @@ type TransformParams struct {
 }
 
 // Main function to render images based on the input parameters.
+// If camera_angles is nil or empty, angles will be generated automatically using equispaced logic (num_images, out_of_plane, polar_angle, etc.).
 func render(
 	input string,
 	output_dir string,
@@ -258,6 +323,7 @@ func render(
 	transparency bool,
 	export_volume bool,
 	polar_angle float64,
+	camera_angles []CameraAngle,
 ) {
 	defer timer()()
 	wrt := os.Stdout
@@ -279,21 +345,27 @@ func render(
 	}
 	// set or compute ds
 	if ds < 0 {
-		ds = lat[0].MinFeatureSize() / 3.0
+		ds = lat[0].MinFeatureSize() / 5.0
 		log.Info().Msgf("Setting ds to %f", ds)
 	}
 
-	// Typically use out_of_plane views for test set
-	if out_of_plane {
-		log.Info().Msg("Random polar angle")
-	} else if polar_angle != 90.0 {
-		log.Info().Msgf("Fixed polar angle at %f degrees", polar_angle)
+	// Generate camera angles if not provided (backward compatibility)
+	if len(camera_angles) == 0 {
+		camera_angles = generateCameraAngles(num_images, job_num, jobs_modulo, out_of_plane, polar_angle)
+		// Typically use out_of_plane views for test set
+		if out_of_plane {
+			log.Info().Msg("Random polar angle")
+		} else if polar_angle != 90.0 {
+			log.Info().Msgf("Fixed polar angle at %f degrees", polar_angle)
+		} else {
+			log.Info().Msg("Fixed polar angle at 90 degrees")
+		}
+		log.Info().Msgf("Generating %d images at resolution %d", num_images, res)
+		log.Info().Msgf("Will render every %dth projection starting from %d", jobs_modulo, job_num)
 	} else {
-		log.Info().Msg("Fixed polar angle at 90 degrees")
+		log.Info().Msgf("Generating %d images at resolution %d using provided camera angles", len(camera_angles), res)
 	}
-
-	log.Info().Msgf("Generating %d images at resolution %d", num_images, res)
-	log.Info().Msgf("Will render every %dth projection starting from %d", jobs_modulo, job_num)
+	num_images = len(camera_angles)
 	res_f := float64(res)
 
 	// create 2D image. It will be reused for each projection
@@ -326,26 +398,14 @@ func render(
 	pix_step := res * res / 50
 	t0 := time.Now()
 
-	// loop over all images. job_num and jobs_modulo can be set if running multiple jobs in parallel on the same object
-	for i_img := job_num; i_img < num_images; i_img += jobs_modulo {
+	// loop over all images using provided camera angles
+	for i_img, angle := range camera_angles {
 		var s string
 		if text_progress {
 			s = fmt.Sprintf("%3d/%3d [", i_img, num_images)
 			wrt.Write([]byte(s))
 		} else {
 			bar.Add(1)
-		}
-
-		dth := 360.0 / float64(num_images)
-		var th, phi float64
-
-		th = float64(i_img)*dth + 90.0
-
-		if out_of_plane { // phi random
-			z := rand.Float64()*2 - 1
-			phi = math.Acos(z)
-		} else {
-			phi = mgl64.DegToRad(polar_angle)
 		}
 
 		// zero out img
@@ -355,12 +415,7 @@ func render(
 			}
 		}
 
-		eye := mgl64.Vec3{R * math.Cos(mgl64.DegToRad(float64(th))) * math.Sin(phi), R * math.Sin(mgl64.DegToRad(float64(th))) * math.Sin(phi), math.Cos(phi) * R}
-		center := mgl64.Vec3{0, 0, 0}
-		up := mgl64.Vec3{0, 0, 1}
-		camera := mgl64.LookAtV(eye, center, up)
-		// use the matrix to transform coordinates from camera space to world space
-		camera = camera.Inv()
+		eye, camera := computeCameraFromAngles(angle.Azimuthal, angle.Polar, R)
 
 		transform_matrix := make([][]float64, 4)
 		for i := 0; i < 4; i++ {
@@ -545,8 +600,16 @@ func main() {
 			},
 			&cli.Float64Flag{
 				Name:  "polar_angle",
-				Usage: "Set custom polar angle in degrees (cannot be used with out_of_plane flag)",
+				Usage: "Set custom polar angle in degrees (cannot be used with out_of_plane flag or --polar_angles)",
 				Value: 90.0,
+			},
+			&cli.StringFlag{
+				Name:  "azimuthal_angles",
+				Usage: "Comma-separated list of azimuthal angles in degrees (e.g., '0,45,90,135'). If provided, must have same length as --polar_angles",
+			},
+			&cli.StringFlag{
+				Name:  "polar_angles",
+				Usage: "Comma-separated list of polar angles in degrees (e.g., '90,90,90,90'). If provided, must have same length as --azimuthal_angles",
 			},
 			&cli.StringFlag{
 				Name:  "fname_pattern",
@@ -641,6 +704,41 @@ func main() {
 			if cCtx.Bool("out_of_plane") && cCtx.Float64("polar_angle") != 90.0 {
 				log.Fatal().Msg("Cannot specify both --out_of_plane and a custom --polar_angle. Please use only one of these options.")
 			}
+			azimuthal_str := cCtx.String("azimuthal_angles")
+			polar_str := cCtx.String("polar_angles")
+			if (azimuthal_str != "" || polar_str != "") && (cCtx.Bool("out_of_plane") || cCtx.Float64("polar_angle") != 90.0) {
+				log.Fatal().Msg("Cannot use --azimuthal_angles/--polar_angles with --out_of_plane or custom --polar_angle. Use either custom angle lists or the automatic angle generation options.")
+			}
+
+			// Parse angle lists if provided
+			var camera_angles []CameraAngle = nil
+			if azimuthal_str != "" || polar_str != "" {
+				if azimuthal_str == "" || polar_str == "" {
+					log.Fatal().Msg("Both --azimuthal_angles and --polar_angles must be provided together")
+				}
+				azimuthal_vals, err := parseFloatList(azimuthal_str)
+				if err != nil {
+					log.Fatal().Err(err).Msg("Failed to parse --azimuthal_angles")
+				}
+				polar_vals, err := parseFloatList(polar_str)
+				if err != nil {
+					log.Fatal().Err(err).Msg("Failed to parse --polar_angles")
+				}
+				if len(azimuthal_vals) != len(polar_vals) {
+					log.Fatal().Msgf("--azimuthal_angles and --polar_angles must have the same length (got %d and %d)", len(azimuthal_vals), len(polar_vals))
+				}
+				if len(azimuthal_vals) == 0 {
+					log.Fatal().Msg("Angle lists cannot be empty")
+				}
+				camera_angles = make([]CameraAngle, len(azimuthal_vals))
+				for i := range azimuthal_vals {
+					camera_angles[i] = CameraAngle{
+						Azimuthal: azimuthal_vals[i],
+						Polar:     polar_vals[i],
+					}
+				}
+				log.Info().Msgf("Using %d custom camera angles", len(camera_angles))
+			}
 
 			if cCtx.String("integration") == "simple" {
 				integrate = integrate_along_ray
@@ -672,6 +770,7 @@ func main() {
 				cCtx.Bool("transparency"),
 				cCtx.Bool("export_volume"),
 				cCtx.Float64("polar_angle"),
+				camera_angles,
 			)
 			return nil
 		},
