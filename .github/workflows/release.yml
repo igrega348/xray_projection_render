@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on tags starting with 'v' (e.g., v1.0.0)
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to create releases and upload artifacts
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.1'
+      
+      - name: Get dependencies
+        working-directory: ./xray_projection_render
+        run: go mod download
+      
+      - name: Create build directory
+        working-directory: ./xray_projection_render
+        run: mkdir -p build
+      
+      # Build executables for all platforms
+      - name: Build for darwin/arm64
+        working-directory: ./xray_projection_render
+        run: |
+          GOOS=darwin GOARCH=arm64 go build -o build/xray_projection_render_darwin-arm64 main.go api.go
+      
+      - name: Build for windows/amd64
+        working-directory: ./xray_projection_render
+        run: |
+          GOOS=windows GOARCH=amd64 go build -o build/xray_projection_render_windows-amd64.exe main.go api.go
+      
+      - name: Build for linux/amd64
+        working-directory: ./xray_projection_render
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o build/xray_projection_render_linux-amd64 main.go api.go
+      
+      # Build shared libraries for all platforms
+      - name: Build shared library for darwin/arm64
+        working-directory: ./xray_projection_render
+        run: |
+          GOOS=darwin GOARCH=arm64 go build -buildmode=c-shared -o build/libxray_projection_render_darwin-arm64 .
+      
+      - name: Build shared library for windows/amd64
+        working-directory: ./xray_projection_render
+        run: |
+          GOOS=windows GOARCH=amd64 go build -buildmode=c-shared -o build/libxray_projection_render_windows-amd64 .
+      
+      - name: Build shared library for linux/amd64
+        working-directory: ./xray_projection_render
+        run: |
+          GOOS=linux GOARCH=amd64 go build -buildmode=c-shared -o build/libxray_projection_render_linux-amd64 .
+      
+      - name: List build artifacts
+        working-directory: ./xray_projection_render
+        run: ls -lh build/
+      
+      # Extract tag name (remove 'refs/tags/' prefix)
+      - name: Extract tag name
+        id: tag
+        run: echo "TAG_NAME=$(echo $GITHUB_REF | sed 's|refs/tags/||')" >> $GITHUB_OUTPUT
+      
+      # Create release and upload all artifacts
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.tag.outputs.TAG_NAME }}
+          name: Release ${{ steps.tag.outputs.TAG_NAME }}
+          body: |
+            Automated release for ${{ steps.tag.outputs.TAG_NAME }}
+            
+            ## Artifacts
+            
+            ### Executables
+            - `xray_projection_render_darwin-arm64` - macOS (Apple Silicon)
+            - `xray_projection_render_windows-amd64.exe` - Windows (x64)
+            - `xray_projection_render_linux-amd64` - Linux (x64)
+            
+            ### Shared Libraries
+            - `libxray_projection_render_darwin-arm64.dylib` + `.h` - macOS (Apple Silicon)
+            - `libxray_projection_render_windows-amd64.dll` + `.h` - Windows (x64)
+            - `libxray_projection_render_linux-amd64.so` + `.h` - Linux (x64)
+          files: |
+            xray_projection_render/build/xray_projection_render_darwin-arm64
+            xray_projection_render/build/xray_projection_render_windows-amd64.exe
+            xray_projection_render/build/xray_projection_render_linux-amd64
+            xray_projection_render/build/libxray_projection_render_darwin-arm64.dylib
+            xray_projection_render/build/libxray_projection_render_darwin-arm64.h
+            xray_projection_render/build/libxray_projection_render_windows-amd64.dll
+            xray_projection_render/build/libxray_projection_render_windows-amd64.h
+            xray_projection_render/build/libxray_projection_render_linux-amd64.so
+            xray_projection_render/build/libxray_projection_render_linux-amd64.h
+          draft: false
+          prerelease: false
+
