@@ -21,47 +21,38 @@ jobs:
           go-version: '1.22.1'
       
       - name: Get dependencies
-        working-directory: ./xray_projection_render
         run: go mod download
       
       - name: Create build directory
-        working-directory: ./xray_projection_render
         run: mkdir -p build
       
       # Build executables for all platforms
       - name: Build for darwin/arm64
-        working-directory: ./xray_projection_render
         run: |
           GOOS=darwin GOARCH=arm64 go build -o build/xray_projection_render_darwin-arm64 main.go api.go
       
       - name: Build for windows/amd64
-        working-directory: ./xray_projection_render
         run: |
           GOOS=windows GOARCH=amd64 go build -o build/xray_projection_render_windows-amd64.exe main.go api.go
       
       - name: Build for linux/amd64
-        working-directory: ./xray_projection_render
         run: |
           GOOS=linux GOARCH=amd64 go build -o build/xray_projection_render_linux-amd64 main.go api.go
       
       # Build shared libraries for all platforms
       - name: Build shared library for darwin/arm64
-        working-directory: ./xray_projection_render
         run: |
           GOOS=darwin GOARCH=arm64 go build -buildmode=c-shared -o build/libxray_projection_render_darwin-arm64 .
       
       - name: Build shared library for windows/amd64
-        working-directory: ./xray_projection_render
         run: |
           GOOS=windows GOARCH=amd64 go build -buildmode=c-shared -o build/libxray_projection_render_windows-amd64 .
       
       - name: Build shared library for linux/amd64
-        working-directory: ./xray_projection_render
         run: |
           GOOS=linux GOARCH=amd64 go build -buildmode=c-shared -o build/libxray_projection_render_linux-amd64 .
       
       - name: List build artifacts
-        working-directory: ./xray_projection_render
         run: ls -lh build/
       
       # Extract tag name (remove 'refs/tags/' prefix)
@@ -90,15 +81,15 @@ jobs:
             - `libxray_projection_render_windows-amd64.dll` + `.h` - Windows (x64)
             - `libxray_projection_render_linux-amd64.so` + `.h` - Linux (x64)
           files: |
-            xray_projection_render/build/xray_projection_render_darwin-arm64
-            xray_projection_render/build/xray_projection_render_windows-amd64.exe
-            xray_projection_render/build/xray_projection_render_linux-amd64
-            xray_projection_render/build/libxray_projection_render_darwin-arm64.dylib
-            xray_projection_render/build/libxray_projection_render_darwin-arm64.h
-            xray_projection_render/build/libxray_projection_render_windows-amd64.dll
-            xray_projection_render/build/libxray_projection_render_windows-amd64.h
-            xray_projection_render/build/libxray_projection_render_linux-amd64.so
-            xray_projection_render/build/libxray_projection_render_linux-amd64.h
+            build/xray_projection_render_darwin-arm64
+            build/xray_projection_render_windows-amd64.exe
+            build/xray_projection_render_linux-amd64
+            build/libxray_projection_render_darwin-arm64.dylib
+            build/libxray_projection_render_darwin-arm64.h
+            build/libxray_projection_render_windows-amd64.dll
+            build/libxray_projection_render_windows-amd64.h
+            build/libxray_projection_render_linux-amd64.so
+            build/libxray_projection_render_linux-amd64.h
           draft: false
           prerelease: false
 
