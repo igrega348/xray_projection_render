@@ -37,6 +37,28 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
+# Try to import resources for finding installed package files
+try:
+    from importlib import resources
+    HAS_IMPORTLIB_RESOURCES = True
+except ImportError:
+    HAS_IMPORTLIB_RESOURCES = False
+
+try:
+    import pkg_resources
+    HAS_PKG_RESOURCES = True
+except ImportError:
+    HAS_PKG_RESOURCES = False
+
+# For downloading from GitHub releases
+try:
+    import urllib.request
+    import urllib.error
+    import tempfile
+    HAS_URLLIB = True
+except ImportError:
+    HAS_URLLIB = False
+
 
 class XRayRenderer:
     """Python wrapper for the xray_projection_render Go library."""
@@ -55,7 +77,8 @@ class XRayRenderer:
         if not os.path.exists(library_path):
             raise FileNotFoundError(
                 f"Library not found at {library_path}. "
-                "Please build the shared library first using build.sh"
+                "Please build the shared library first using build.sh, or ensure you have "
+                "an internet connection to download it from GitHub releases."
             )
         
         self.lib = ctypes.CDLL(library_path)
@@ -63,10 +86,6 @@ class XRayRenderer:
     
     def _find_library(self) -> str:
         """Find the shared library file based on the current platform."""
-        # Get the directory where this file is located
-        script_dir = Path(__file__).parent.resolve()
-        build_dir = script_dir / "build"
-        
         system = platform.system().lower()
         machine = platform.machine().lower()
         
@@ -79,6 +98,15 @@ class XRayRenderer:
             # On Linux, Go may create the library without .so extension
             lib_names = ["libxray_projection_render.so", "libxray_projection_render"]
         
+        # First, try to find library in installed package location
+        installed_path = self._find_installed_library(lib_names)
+        if installed_path:
+            return installed_path
+        
+        # Fallback to development mode: look relative to this file
+        script_dir = Path(__file__).parent.resolve()
+        build_dir = script_dir / "build"
+        
         # Try each possible library name
         for lib_name in lib_names:
             lib_path = build_dir / lib_name
@@ -90,8 +118,196 @@ class XRayRenderer:
             if lib_path.exists():
                 return str(lib_path)
         
+        # If not found locally, try downloading from GitHub releases
+        downloaded_path = self._download_from_github_release(lib_names)
+        if downloaded_path:
+            return downloaded_path
+        
         # Return expected path for error message
         return str(build_dir / lib_names[0])
+    
+    def _find_installed_library(self, lib_names: List[str]) -> Optional[str]:
+        """Try to find the library in the installed package location."""
+        try:
+            # First try pkg_resources (works with setuptools)
+            if HAS_PKG_RESOURCES:
+                try:
+                    dist = pkg_resources.get_distribution("xray-renderer")
+                    # Get the package installation directory
+                    # For installed packages, location points to site-packages
+                    package_dir = Path(dist.location) / "xray_projection_render"
+                    build_dir = package_dir / "build"
+                    
+                    for lib_name in lib_names:
+                        lib_path = build_dir / lib_name
+                        if lib_path.exists():
+                            return str(lib_path)
+                except (pkg_resources.DistributionNotFound, AttributeError, ImportError):
+                    # Package not installed via pip
+                    pass
+            
+            # Try using importlib.resources (Python 3.9+)
+            if HAS_IMPORTLIB_RESOURCES:
+                try:
+                    # Use files() API for Python 3.9+
+                    if hasattr(resources, 'files'):
+                        package = resources.files("xray_projection_render")
+                        build_dir = package / "build"
+                        
+                        for lib_name in lib_names:
+                            try:
+                                lib_path = build_dir / lib_name
+                                # Convert Traversable to Path for existence check
+                                lib_path_str = str(lib_path)
+                                if Path(lib_path_str).exists():
+                                    return lib_path_str
+                            except (AttributeError, TypeError, Exception):
+                                continue
+                except (ModuleNotFoundError, TypeError, AttributeError):
+                    # Not installed as a package, or resources API not available
+                    pass
+        except Exception:
+            # Any other error, fall back to development mode
+            pass
+        
+        return None
+    
+    def _download_from_github_release(self, lib_names: List[str]) -> Optional[str]:
+        """Try to download the library from GitHub releases if not found locally."""
+        if not HAS_URLLIB:
+            return None
+        
+        try:
+            system = platform.system().lower()
+            machine = platform.machine().lower()
+            
+            # Map platform to GitHub release asset name
+            # Based on build.sh, assets are named like: libxray_projection_render_<platform>-<arch>
+            if system == "darwin":
+                if machine in ["arm64", "aarch64"]:
+                    asset_name = "libxray_projection_render_darwin-arm64"
+                else:
+                    asset_name = "libxray_projection_render_darwin-amd64"
+            elif system == "windows":
+                asset_name = "libxray_projection_render_windows-amd64.dll"
+            elif system == "linux":
+                asset_name = "libxray_projection_render_linux-amd64.so"
+            else:
+                # Unknown platform, skip download
+                return None
+            
+            # Try to get version from package metadata or git
+            version = self._get_package_version()
+            if not version:
+                # Fallback to latest release
+                version = "latest"
+            
+            # Determine cache directory
+            cache_dir = self._get_cache_directory()
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Determine expected library name for this platform
+            if system == "darwin":
+                expected_name = "libxray_projection_render.dylib"
+            elif system == "windows":
+                expected_name = "xray_projection_render.dll"
+            else:  # Linux
+                expected_name = "libxray_projection_render.so"
+            
+            cached_lib = cache_dir / expected_name
+            
+            # Check if already cached
+            if cached_lib.exists():
+                return str(cached_lib)
+            
+            # Download from GitHub releases
+            if version == "latest":
+                url = f"https://github.com/igrega348/xray_projection_render/releases/latest/download/{asset_name}"
+            else:
+                # Remove 'v' prefix if present
+                version_tag = version.lstrip('v')
+                url = f"https://github.com/igrega348/xray_projection_render/releases/download/v{version_tag}/{asset_name}"
+            
+            print(f"Downloading library from GitHub releases: {asset_name}")
+            try:
+                urllib.request.urlretrieve(url, str(cached_lib))
+                # Make executable on Unix systems
+                if system != "windows":
+                    os.chmod(cached_lib, 0o755)
+                print(f"✓ Downloaded library to {cached_lib}")
+                return str(cached_lib)
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    # Asset not found for this platform, that's okay
+                    return None
+                raise
+            except Exception as e:
+                # Network error or other issue, fail silently
+                if cached_lib.exists():
+                    cached_lib.unlink()  # Clean up partial download
+                return None
+                
+        except Exception:
+            # Any error, fail silently and fall back to local build
+            return None
+    
+    def _get_package_version(self) -> Optional[str]:
+        """Get the package version from installed package or git tag."""
+        # Try to get version from installed package
+        if HAS_PKG_RESOURCES:
+            try:
+                dist = pkg_resources.get_distribution("xray-renderer")
+                return dist.version
+            except (pkg_resources.DistributionNotFound, AttributeError):
+                pass
+        
+        # Try to get version from _version.py (setuptools_scm)
+        try:
+            script_dir = Path(__file__).parent.resolve()
+            version_file = script_dir / "_version.py"
+            if version_file.exists():
+                # Read version from _version.py
+                with open(version_file, 'r') as f:
+                    for line in f:
+                        if line.startswith('version = '):
+                            version = line.split('=')[1].strip().strip('"').strip("'")
+                            return version
+        except Exception:
+            pass
+        
+        # Try to get from git tag
+        try:
+            import subprocess
+            result = subprocess.run(
+                ['git', 'describe', '--tags', '--always'],
+                cwd=Path(__file__).parent.parent,
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                tag = result.stdout.strip()
+                # Extract version from tag (e.g., "v1.4-2-g5fc76f6" -> "v1.4")
+                if tag.startswith('v'):
+                    version = tag.split('-')[0]
+                    return version
+        except Exception:
+            pass
+        
+        return None
+    
+    def _get_cache_directory(self) -> Path:
+        """Get the cache directory for downloaded libraries."""
+        system = platform.system().lower()
+        # Use user cache directory
+        if system == "windows":
+            cache_base = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
+        elif system == "darwin":
+            cache_base = Path.home() / 'Library' / 'Caches'
+        else:  # Linux and others
+            cache_base = Path(os.environ.get('XDG_CACHE_HOME', Path.home() / '.cache'))
+        
+        return cache_base / 'xray-renderer' / 'libs'
     
     def _setup_function_signatures(self):
         """Set up the function signatures for ctypes."""
