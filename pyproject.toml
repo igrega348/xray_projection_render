@@ -8,7 +8,7 @@ description = "Python bindings for xray_projection_render Go library"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Ivan Grega", email = ""}
+    {name = "Ivan Grega"}
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -26,21 +26,25 @@ requires-python = ">=3.9"
 dynamic = ["version"]
 
 [tool.setuptools]
-packages = {find = {}}
+# Package files are in the current directory
+packages = ["xray_projection_render"]
 include-package-data = true
 
 [tool.setuptools.package-data]
+# Build directory is at project root, paths are relative to package source
 xray_projection_render = [
-    "build/*.so",
-    "build/*.dylib",
-    "build/*.dll",
-    "build/libxray_projection_render*",
+    "../build/*.so",
+    "../build/*.dylib",
+    "../build/*.dll",
+    "../build/libxray_projection_render*",
 ]
 
 [tool.setuptools_scm]
-# Extract version from git tags (e.g., v1.4 -> 1.4)
+# Extract version from git tags (e.g., v1.5 -> 1.5)
 # This mirrors the Go release tags
+# write_to is relative to the package directory when installed
 write_to = "xray_projection_render/_version.py"
 version_scheme = "release-branch-semver"
 local_scheme = "no-local-version"
+fallback_version = "1.5"  # Fallback when git is not available (e.g., in Colab)
 
