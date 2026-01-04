@@ -81,8 +81,7 @@ class XRayRenderer:
                 error_msg += f"\n\nDownload from GitHub releases failed: {download_error}"
             error_msg += "\n\nPlease either:"
             error_msg += "\n1. Build the shared library using build.sh, or"
-            error_msg += "\n2. Ensure you have an internet connection to download it from GitHub releases, or"
-            error_msg += "\n3. Install the package from PyPI which includes pre-built libraries."
+            error_msg += "\n2. Ensure you have an internet connection to download it from GitHub releases."
             raise FileNotFoundError(error_msg)
         
         self.lib = ctypes.CDLL(library_path)
