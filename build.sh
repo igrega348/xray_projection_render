@@ -40,21 +40,60 @@ build_shared_library() {
     echo "  Header: ${OUTPUT_BASE}.h"
 }
 
-# Build for Apple Silicon (darwin/arm64)
-build_for_platform "darwin" "arm64" "xray_projection_render_darwin-arm64"
+# Function to get output name for a platform
+get_output_name() {
+    local GOOS=$1
+    local GOARCH=$2
+    
+    case "$GOOS" in
+        darwin)
+            echo "xray_projection_render_darwin-${GOARCH}"
+            ;;
+        windows)
+            echo "xray_projection_render_windows-${GOARCH}.exe"
+            ;;
+        linux)
+            echo "xray_projection_render_linux-${GOARCH}"
+            ;;
+        *)
+            echo "xray_projection_render_${GOOS}-${GOARCH}"
+            ;;
+    esac
+}
 
-# Build for Windows (windows/amd64)
-build_for_platform "windows" "amd64" "xray_projection_render_windows-amd64.exe"
+# Detect current platform
+CURRENT_OS=$(go env GOOS)
+CURRENT_ARCH=$(go env GOARCH)
 
-# Build for Linux (linux/amd64)
-build_for_platform "linux" "amd64" "xray_projection_render_linux-amd64"
+# Check if --all flag is set
+BUILD_ALL=false
+if [[ "$1" == "--all" ]] || [[ "$1" == "-a" ]]; then
+    BUILD_ALL=true
+fi
+
+if [ "$BUILD_ALL" = true ]; then
+    echo "Building for all platforms..."
+    
+    # Build for Apple Silicon (darwin/arm64)
+    build_for_platform "darwin" "arm64" "xray_projection_render_darwin-arm64"
+    
+    # Build for Windows (windows/amd64)
+    build_for_platform "windows" "amd64" "xray_projection_render_windows-amd64.exe"
+    
+    # Build for Linux (linux/amd64)
+    build_for_platform "linux" "amd64" "xray_projection_render_linux-amd64"
+    
+    echo "All platform builds completed!"
+else
+    echo "Building for current platform: $CURRENT_OS/$CURRENT_ARCH"
+    OUTPUT_NAME=$(get_output_name "$CURRENT_OS" "$CURRENT_ARCH")
+    build_for_platform "$CURRENT_OS" "$CURRENT_ARCH" "$OUTPUT_NAME"
+fi
 
 # Build shared library for current platform
 echo "Building shared library for current platform..."
-CURRENT_OS=$(go env GOOS)
-CURRENT_ARCH=$(go env GOARCH)
 build_shared_library "$CURRENT_OS" "$CURRENT_ARCH"
 
-echo "All builds completed successfully!"
+echo "Build completed successfully!"
 echo "Build artifacts are in the $BUILD_DIR directory"
-echo "Shared library: $BUILD_DIR/$OUTPUT_NAME" 
+echo "Shared library: $BUILD_DIR/libxray_projection_render" 
