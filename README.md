@@ -1,6 +1,6 @@
 # X-ray projection engine
 
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/igrega348/xray_projection_render/HEAD?urlpath=%2Fdoc%2Ftree%2Fexamples%2Fdemo.ipynb)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/igrega348/xray_projection_render/HEAD?urlpath=%2Ftree%2Fexamples%2Fdemo.ipynb)
 
 Go renderer for generating X-ray projections of simple objects.
 
