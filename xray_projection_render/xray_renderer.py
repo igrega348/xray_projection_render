@@ -115,7 +115,7 @@ class XRayRenderer:
         script_dir = Path(__file__).parent.resolve()
         build_dir = script_dir / "build"
         
-        # Try each possible library name
+        # Try each possible library name in package build directory
         for lib_name in lib_names:
             lib_path = build_dir / lib_name
             if lib_path.exists():
@@ -123,6 +123,13 @@ class XRayRenderer:
             
             # Fallback: try current directory
             lib_path = script_dir / lib_name
+            if lib_path.exists():
+                return str(lib_path), None
+        
+        # Also check parent directory's build folder (project root)
+        parent_build_dir = script_dir.parent / "build"
+        for lib_name in lib_names:
+            lib_path = parent_build_dir / lib_name
             if lib_path.exists():
                 return str(lib_path), None
         
