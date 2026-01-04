@@ -220,6 +220,13 @@ class XRayRenderer:
             if not version:
                 # Fallback to latest release
                 version = "latest"
+            else:
+                # Check if this is a development/pre-release version
+                # Development versions (e.g., 1.5.0.dev6, 1.5.0a1, 1.5.0rc1) don't have GitHub releases
+                # Use "latest" instead for these versions
+                version_lower = version.lower()
+                if any(indicator in version_lower for indicator in ['.dev', 'dev', 'a', 'alpha', 'b', 'beta', 'rc', 'pre']):
+                    version = "latest"
             
             # Determine cache directory
             cache_dir = self._get_cache_directory()
