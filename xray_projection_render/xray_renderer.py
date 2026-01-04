@@ -35,7 +35,7 @@ import os
 import platform
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 # Try to import resources for finding installed package files
 try:
@@ -71,21 +71,29 @@ class XRayRenderer:
             library_path: Path to the shared library file. If None, attempts to
                          find it in common locations relative to this file.
         """
+        download_error = None
         if library_path is None:
-            library_path = self._find_library()
+            library_path, download_error = self._find_library()
         
         if not os.path.exists(library_path):
-            raise FileNotFoundError(
-                f"Library not found at {library_path}. "
-                "Please build the shared library first using build.sh, or ensure you have "
-                "an internet connection to download it from GitHub releases."
-            )
+            error_msg = f"Library not found at {library_path}."
+            if download_error:
+                error_msg += f"\n\nDownload from GitHub releases failed: {download_error}"
+            error_msg += "\n\nPlease either:"
+            error_msg += "\n1. Build the shared library using build.sh, or"
+            error_msg += "\n2. Ensure you have an internet connection to download it from GitHub releases, or"
+            error_msg += "\n3. Install the package from PyPI which includes pre-built libraries."
+            raise FileNotFoundError(error_msg)
         
         self.lib = ctypes.CDLL(library_path)
         self._setup_function_signatures()
     
-    def _find_library(self) -> str:
-        """Find the shared library file based on the current platform."""
+    def _find_library(self) -> Tuple[str, Optional[str]]:
+        """Find the shared library file based on the current platform.
+        
+        Returns:
+            Tuple[str, Optional[str]]: (library_path, download_error_message)
+        """
         system = platform.system().lower()
         machine = platform.machine().lower()
         
@@ -101,7 +109,7 @@ class XRayRenderer:
         # First, try to find library in installed package location
         installed_path = self._find_installed_library(lib_names)
         if installed_path:
-            return installed_path
+            return installed_path, None
         
         # Fallback to development mode: look relative to this file
         script_dir = Path(__file__).parent.resolve()
@@ -111,20 +119,20 @@ class XRayRenderer:
         for lib_name in lib_names:
             lib_path = build_dir / lib_name
             if lib_path.exists():
-                return str(lib_path)
+                return str(lib_path), None
             
             # Fallback: try current directory
             lib_path = script_dir / lib_name
             if lib_path.exists():
-                return str(lib_path)
+                return str(lib_path), None
         
         # If not found locally, try downloading from GitHub releases
-        downloaded_path = self._download_from_github_release(lib_names)
+        downloaded_path, download_error = self._download_from_github_release(lib_names)
         if downloaded_path:
-            return downloaded_path
+            return downloaded_path, None
         
         # Return expected path for error message
-        return str(build_dir / lib_names[0])
+        return str(build_dir / lib_names[0]), download_error
     
     def _find_installed_library(self, lib_names: List[str]) -> Optional[str]:
         """Try to find the library in the installed package location."""
@@ -172,10 +180,14 @@ class XRayRenderer:
         
         return None
     
-    def _download_from_github_release(self, lib_names: List[str]) -> Optional[str]:
-        """Try to download the library from GitHub releases if not found locally."""
+    def _download_from_github_release(self, lib_names: List[str]) -> Tuple[Optional[str], Optional[str]]:
+        """Try to download the library from GitHub releases if not found locally.
+        
+        Returns:
+            Tuple[Optional[str], Optional[str]]: (library_path, error_message)
+        """
         if not HAS_URLLIB:
-            return None
+            return None, "urllib not available"
         
         try:
             system = platform.system().lower()
@@ -194,7 +206,7 @@ class XRayRenderer:
                 asset_name = "libxray_projection_render_linux-amd64.so"
             else:
                 # Unknown platform, skip download
-                return None
+                return None, f"Unknown platform: {system}/{machine}"
             
             # Try to get version from package metadata or git
             version = self._get_package_version()
@@ -218,7 +230,7 @@ class XRayRenderer:
             
             # Check if already cached
             if cached_lib.exists():
-                return str(cached_lib)
+                return str(cached_lib), None
             
             # Download from GitHub releases
             if version == "latest":
@@ -235,21 +247,31 @@ class XRayRenderer:
                 if system != "windows":
                     os.chmod(cached_lib, 0o755)
                 print(f"✓ Downloaded library to {cached_lib}")
-                return str(cached_lib)
+                return str(cached_lib), None
             except urllib.error.HTTPError as e:
                 if e.code == 404:
-                    # Asset not found for this platform, that's okay
-                    return None
-                raise
-            except Exception as e:
-                # Network error or other issue, fail silently
+                    error_msg = f"Asset '{asset_name}' not found at {url}"
+                    if version != "latest":
+                        error_msg += f" (tried version {version})"
+                    return None, error_msg
+                error_msg = f"HTTP error {e.code}: {e.reason}"
                 if cached_lib.exists():
                     cached_lib.unlink()  # Clean up partial download
-                return None
+                return None, error_msg
+            except urllib.error.URLError as e:
+                error_msg = f"Network error: {str(e)}"
+                if cached_lib.exists():
+                    cached_lib.unlink()  # Clean up partial download
+                return None, error_msg
+            except Exception as e:
+                error_msg = f"Download failed: {str(e)}"
+                if cached_lib.exists():
+                    cached_lib.unlink()  # Clean up partial download
+                return None, error_msg
                 
-        except Exception:
-            # Any error, fail silently and fall back to local build
-            return None
+        except Exception as e:
+            # Any other error
+            return None, f"Unexpected error during download: {str(e)}"
     
     def _get_package_version(self) -> Optional[str]:
         """Get the package version from installed package or git tag."""
