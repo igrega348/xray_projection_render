@@ -35,6 +35,14 @@ build_shared_library() {
     
     GOOS=$GOOS GOARCH=$GOARCH go build -buildmode=c-shared -o "$OUTPUT_BASE" .
     
+    # On Linux, ensure the .so extension is present (Go may create it without extension)
+    if [ "$GOOS" = "linux" ]; then
+        if [ -f "$OUTPUT_BASE" ] && [ ! -f "$OUTPUT_BASE.so" ]; then
+            mv "$OUTPUT_BASE" "$OUTPUT_BASE.so"
+            echo "Renamed library file to include .so extension"
+        fi
+    fi
+    
     echo "Shared library build complete for $GOOS/$GOARCH"
     echo "  Library: ${OUTPUT_BASE}.* (extension depends on platform)"
     echo "  Header: ${OUTPUT_BASE}.h"

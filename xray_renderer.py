@@ -76,7 +76,8 @@ class XRayRenderer:
         elif system == "windows":
             lib_names = ["xray_projection_render.dll"]
         else:  # Linux and others
-            lib_names = ["libxray_projection_render.so"]
+            # On Linux, Go may create the library without .so extension
+            lib_names = ["libxray_projection_render.so", "libxray_projection_render"]
         
         # Try each possible library name
         for lib_name in lib_names:
