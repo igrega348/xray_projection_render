@@ -55,7 +55,7 @@ func (g *GaussianDeformation) FromMap(data map[string]interface{}) error {
 	for i, a := range amplitudes {
 		g.Amplitudes[i] = a.(float64)
 	}
-	sigmas := data["sigmas"].([]interface{})
+	sigmas, ok := data["sigmas"].([]interface{})
 	if !ok {
 		return fmt.Errorf("sigmas must be a list")
 	}
@@ -63,7 +63,7 @@ func (g *GaussianDeformation) FromMap(data map[string]interface{}) error {
 	for i, s := range sigmas {
 		g.Sigmas[i] = s.(float64)
 	}
-	centers := data["centers"].([]interface{})
+	centers, ok := data["centers"].([]interface{})
 	if !ok {
 		return fmt.Errorf("centers must be a list")
 	}
