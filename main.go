@@ -684,7 +684,7 @@ func main() {
 			&cli.BoolFlag{
 				Name: "export_volume",
 				Usage: "Export voxel grid of resolution" +
-					" res x res x res from density. Save into file volume.raw",
+					" res x res x res from density. Save into file volume.raw. (default: false)",
 			},
 			// verbose flag
 			&cli.BoolFlag{

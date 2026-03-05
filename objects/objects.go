@@ -727,7 +727,7 @@ func (v *VoxelGrid) FromMap(data map[string]interface{}) error {
 		// For raw files, we need resolution information
 		res_data, ok := data["resolution"].([]interface{})
 		if !ok {
-			return fmt.Errorf("resolution must be provided for raw files")
+			return fmt.Errorf("resolution must be provided for raw files as a list of 3 integers")
 		}
 		if len(res_data) != 3 {
 			return fmt.Errorf("resolution must be a list of 3 integers")
