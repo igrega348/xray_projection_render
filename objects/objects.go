@@ -734,8 +734,15 @@ func (v *VoxelGrid) FromMap(data map[string]interface{}) error {
 		}
 		resolution := [3]int{}
 		for i, val := range res_data {
-			if resolution[i], ok = val.(int); !ok {
-				return fmt.Errorf("resolution[%d] is not an integer", i)
+			switch t := val.(type) {
+			case int:
+				resolution[i] = t
+			case int64:
+				resolution[i] = int(t)
+			case float64:
+				resolution[i] = int(t)
+			default:
+				return fmt.Errorf("resolution[%d] has unsupported type %T (need int-like)", i, val)
 			}
 		}
 
