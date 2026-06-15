@@ -834,15 +834,15 @@ func (v *VoxelGrid) Density(x, y, z float64) float64 {
 	wy := y - float64(y0)
 	wz := z - float64(z0)
 
-	// Get voxel values
-	v000 := v.Rho[z0*v.NX*v.NY+y0*v.NX+x0]
-	v001 := v.Rho[z1*v.NX*v.NY+y0*v.NX+x0]
-	v010 := v.Rho[z0*v.NX*v.NY+y1*v.NX+x0]
-	v011 := v.Rho[z1*v.NX*v.NY+y1*v.NX+x0]
-	v100 := v.Rho[z0*v.NX*v.NY+y0*v.NX+x1]
-	v101 := v.Rho[z1*v.NX*v.NY+y0*v.NX+x1]
-	v110 := v.Rho[z0*v.NX*v.NY+y1*v.NX+x1]
-	v111 := v.Rho[z1*v.NX*v.NY+y1*v.NX+x1]
+	// Get voxel values — flat layout is [z][x][y]: index = z*NX*NY + x*NY + y
+	v000 := v.Rho[z0*v.NX*v.NY+x0*v.NY+y0]
+	v001 := v.Rho[z1*v.NX*v.NY+x0*v.NY+y0]
+	v010 := v.Rho[z0*v.NX*v.NY+x0*v.NY+y1]
+	v011 := v.Rho[z1*v.NX*v.NY+x0*v.NY+y1]
+	v100 := v.Rho[z0*v.NX*v.NY+x1*v.NY+y0]
+	v101 := v.Rho[z1*v.NX*v.NY+x1*v.NY+y0]
+	v110 := v.Rho[z0*v.NX*v.NY+x1*v.NY+y1]
+	v111 := v.Rho[z1*v.NX*v.NY+x1*v.NY+y1]
 
 	// Trilinear interpolation
 	v00 := v000*(1-wz) + v001*wz

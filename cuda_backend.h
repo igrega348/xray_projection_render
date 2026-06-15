@@ -18,6 +18,55 @@
 extern "C" {
 #endif
 
+// Parameters for a single cylinder primitive.
+typedef struct {
+    float p0[3];    // start endpoint
+    float p1[3];    // end endpoint
+    float radius;
+    float rho;      // density value when inside
+} CylinderParams;
+
+// Assemble a float32 voxel grid by evaluating cylinder densities on the GPU.
+// Brute-force: each voxel checks all num_cylinders.
+//
+// Returns: 0 on success, non-zero on error.
+int AssembleVoxelGridCUDA(
+    const CylinderParams* cylinders,
+    int num_cylinders,
+    int res,
+    float density_multiplier,
+    float* out_volume
+);
+
+// Spatial-hash accelerated variant.
+// The caller pre-builds a CSR (compressed sparse row) structure that maps each
+// grid cell to its list of candidate cylinder indices.
+//
+// Arguments:
+//   cylinders         - cylinder params, length num_cylinders
+//   num_cylinders     - total cylinders
+//   res               - cubic volume side length
+//   density_multiplier
+//   grid_dim          - spatial hash grid side length (G; total G³ cells)
+//   cell_offsets      - int array of length G³+1; cell_offsets[c] is the start
+//                       index into cyl_indices for cell c, cell_offsets[G³] == len(cyl_indices)
+//   cyl_indices       - int array of cylinder indices, one entry per (cell, cylinder) pair
+//   num_cyl_indices   - length of cyl_indices
+//   out_volume        - output, length res³, layout [k*res*res + i*res + j]
+//
+// Returns: 0 on success, non-zero on error.
+int AssembleVoxelGridSpatialCUDA(
+    const CylinderParams* cylinders,
+    int num_cylinders,
+    int res,
+    float density_multiplier,
+    int grid_dim,
+    const int* cell_offsets,
+    const int* cyl_indices,
+    int num_cyl_indices,
+    float* out_volume
+);
+
 // Camera parameters for one projection.
 //
 // The camera transform follows the convention used in the Go code:

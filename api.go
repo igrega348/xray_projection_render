@@ -17,6 +17,7 @@ package main
 import "C"
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"unsafe"
 
@@ -25,6 +26,16 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
+
+// fatalToPanicHook converts log.Fatal events to panics so that recover() in
+// RenderProjections can intercept them instead of letting os.Exit kill the process.
+type fatalToPanicHook struct{}
+
+func (fatalToPanicHook) Run(_ *zerolog.Event, level zerolog.Level, msg string) {
+	if level == zerolog.FatalLevel {
+		panic("fatal: " + msg)
+	}
+}
 
 // RenderParams represents all parameters needed for rendering.
 type RenderParams struct {
@@ -69,25 +80,47 @@ type RenderResult struct {
 //   - Memory is allocated using C.malloc and must be freed by the caller
 //
 //export RenderProjections
-func RenderProjections(jsonParams *C.char) *C.char {
+func RenderProjections(jsonParams *C.char) (ret *C.char) {
+	errorResult := func(msg string) *C.char {
+		r := RenderResult{Success: false, Error: msg}
+		b, _ := json.Marshal(r)
+		return C.CString(string(b))
+	}
+
 	paramsStr := C.GoString(jsonParams)
 
 	var params RenderParams
 	if err := json.Unmarshal([]byte(paramsStr), &params); err != nil {
-		result := RenderResult{
-			Success: false,
-			Error:   "Failed to parse parameters: " + err.Error(),
-		}
-		resultJSON, _ := json.Marshal(result)
-		return C.CString(string(resultJSON))
+		return errorResult("Failed to parse parameters: " + err.Error())
+	}
+
+	// Validate parameters that would cause silent failures or infinite loops.
+	if params.DS == 0 {
+		return errorResult("ds is 0; use a negative value for automatic step-size selection")
+	}
+	if params.DensityMultiplier == 0 {
+		return errorResult("density_multiplier is 0; all densities will be zero and the render will produce a blank image")
 	}
 
 	// Set logging level
 	logLevel := params.LogLevel
 	if logLevel == "" {
-		logLevel = "error" // Default to quiet (only errors)
+		logLevel = "error"
 	}
 	setLogLevel(logLevel)
+
+	// Install a hook that converts log.Fatal to panic so recover() below can
+	// catch it. Without this, log.Fatal calls os.Exit(1) and kills the process.
+	origLogger := log.Logger
+	log.Logger = log.Logger.Hook(fatalToPanicHook{})
+	defer func() { log.Logger = origLogger }()
+
+	// Recover from panics (including those promoted from log.Fatal via the hook).
+	defer func() {
+		if r := recover(); r != nil {
+			ret = errorResult(fmt.Sprintf("render failed: %v", r))
+		}
+	}()
 
 	// Set global variables from params
 	density_multiplier = params.DensityMultiplier
@@ -104,18 +137,6 @@ func RenderProjections(jsonParams *C.char) *C.char {
 	warned_clipping_max = false
 	warned_clipping_min = false
 
-	// Call render function with provided parameters
-	// Wrap in a panic recovery since render may call log.Fatal
-	defer func() {
-		if r := recover(); r != nil {
-			// Panic was recovered, but we can't return from here
-			// The result will be set below
-		}
-	}()
-
-	// Note: render() may call log.Fatal which will terminate the program.
-	// This is expected behavior for CLI usage. For API usage, we rely on
-	// the caller to ensure parameters are valid.
 	render(
 		params.Input,
 		params.OutputDir,
@@ -135,6 +156,7 @@ func RenderProjections(jsonParams *C.char) *C.char {
 		params.ExportVolume,
 		params.PolarAngle,
 		params.CameraAngles,
+		false, // use_cuda: not supported via API path
 	)
 
 	result := RenderResult{
@@ -144,14 +166,8 @@ func RenderProjections(jsonParams *C.char) *C.char {
 	}
 	resultJSON, err := json.Marshal(result)
 	if err != nil {
-		errorResult := RenderResult{
-			Success: false,
-			Error:   "Failed to marshal result: " + err.Error(),
-		}
-		errorJSON, _ := json.Marshal(errorResult)
-		return C.CString(string(errorJSON))
+		return errorResult("Failed to marshal result: " + err.Error())
 	}
-
 	return C.CString(string(resultJSON))
 }
 

@@ -202,3 +202,217 @@ int RenderVolumeProjectionsCUDA(
     return 0;
 }
 
+// Each thread evaluates one voxel against all cylinders.
+// Volume layout: out[k*res*res + i*res + j]
+// World coords:  x = i/res*2-1, y = j/res*2-1, z = k/res*2-1
+__global__ void voxelize_kernel(
+    const CylinderParams* __restrict__ cylinders,
+    int num_cylinders,
+    int res,
+    float density_multiplier,
+    float* __restrict__ out_volume)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = res * res * res;
+    if (idx >= total) return;
+
+    int k = idx / (res * res);
+    int i = (idx / res) % res;
+    int j = idx % res;
+
+    float res_f = (float)res;
+    float x = (float)i / res_f * 2.0f - 1.0f;
+    float y = (float)j / res_f * 2.0f - 1.0f;
+    float z = (float)k / res_f * 2.0f - 1.0f;
+
+    float density = 0.0f;
+    for (int c = 0; c < num_cylinders; c++) {
+        float vx = cylinders[c].p1[0] - cylinders[c].p0[0];
+        float vy = cylinders[c].p1[1] - cylinders[c].p0[1];
+        float vz = cylinders[c].p1[2] - cylinders[c].p0[2];
+        float wx = x - cylinders[c].p0[0];
+        float wy = y - cylinders[c].p0[1];
+        float wz = z - cylinders[c].p0[2];
+        float vdotv = vx*vx + vy*vy + vz*vz;
+        if (vdotv == 0.0f) continue;
+        float t = (wx*vx + wy*vy + wz*vz) / vdotv;
+        if (t < 0.0f || t > 1.0f) continue;
+        float dx = wx - vx*t;
+        float dy = wy - vy*t;
+        float dz = wz - vz*t;
+        float r = cylinders[c].radius;
+        if (dx*dx + dy*dy + dz*dz < r*r) {
+            density += cylinders[c].rho;
+        }
+    }
+    density *= density_multiplier;
+    if (density > 1.0f) density = 1.0f;
+    if (density < 0.0f) density = 0.0f;
+    out_volume[idx] = density;
+}
+
+int AssembleVoxelGridCUDA(
+    const CylinderParams* cylinders,
+    int num_cylinders,
+    int res,
+    float density_multiplier,
+    float* out_volume)
+{
+    if (!cylinders || !out_volume || num_cylinders <= 0 || res <= 0) return 1;
+
+    size_t cyl_bytes = (size_t)num_cylinders * sizeof(CylinderParams);
+    size_t vol_bytes = (size_t)res * res * res * sizeof(float);
+
+    CylinderParams* d_cyls = nullptr;
+    float* d_vol = nullptr;
+    cudaError_t err;
+
+    err = cudaMalloc(&d_cyls, cyl_bytes);
+    if (err != cudaSuccess) return 2;
+
+    err = cudaMemcpy(d_cyls, cylinders, cyl_bytes, cudaMemcpyHostToDevice);
+    if (err != cudaSuccess) { cudaFree(d_cyls); return 3; }
+
+    err = cudaMalloc(&d_vol, vol_bytes);
+    if (err != cudaSuccess) { cudaFree(d_cyls); return 4; }
+
+    int total = res * res * res;
+    int block = 256;
+    int grid = (total + block - 1) / block;
+
+    voxelize_kernel<<<grid, block>>>(d_cyls, num_cylinders, res, density_multiplier, d_vol);
+
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) { cudaFree(d_cyls); cudaFree(d_vol); return 5; }
+
+    err = cudaMemcpy(out_volume, d_vol, vol_bytes, cudaMemcpyDeviceToHost);
+    cudaFree(d_cyls);
+    cudaFree(d_vol);
+    return (err != cudaSuccess) ? 6 : 0;
+}
+
+// Spatial-hash variant: each voxel only checks the cylinders assigned to its grid cell.
+// cell_offsets[c] and cell_offsets[c+1] delimit the slice of cyl_indices for cell c.
+// Grid ordering: cell = (cz * grid_dim + cy) * grid_dim + cx
+__global__ void voxelize_spatial_kernel(
+    const CylinderParams* __restrict__ cylinders,
+    int res,
+    float density_multiplier,
+    int grid_dim,
+    const int* __restrict__ cell_offsets,
+    const int* __restrict__ cyl_indices,
+    float* __restrict__ out_volume)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = res * res * res;
+    if (idx >= total) return;
+
+    int k = idx / (res * res);
+    int i = (idx / res) % res;
+    int j = idx % res;
+
+    float res_f = (float)res;
+    float x = (float)i / res_f * 2.0f - 1.0f;
+    float y = (float)j / res_f * 2.0f - 1.0f;
+    float z = (float)k / res_f * 2.0f - 1.0f;
+
+    // Map world coords to grid cell.
+    float cell_size = 2.0f / (float)grid_dim;
+    int cx = (int)((x + 1.0f) / cell_size);
+    int cy = (int)((y + 1.0f) / cell_size);
+    int cz = (int)((z + 1.0f) / cell_size);
+    if (cx < 0) cx = 0; if (cx >= grid_dim) cx = grid_dim - 1;
+    if (cy < 0) cy = 0; if (cy >= grid_dim) cy = grid_dim - 1;
+    if (cz < 0) cz = 0; if (cz >= grid_dim) cz = grid_dim - 1;
+    int cell = (cz * grid_dim + cy) * grid_dim + cx;
+
+    int start = cell_offsets[cell];
+    int end   = cell_offsets[cell + 1];
+
+    float density = 0.0f;
+    for (int ci = start; ci < end; ci++) {
+        int c = cyl_indices[ci];
+        float vx = cylinders[c].p1[0] - cylinders[c].p0[0];
+        float vy = cylinders[c].p1[1] - cylinders[c].p0[1];
+        float vz = cylinders[c].p1[2] - cylinders[c].p0[2];
+        float wx = x - cylinders[c].p0[0];
+        float wy = y - cylinders[c].p0[1];
+        float wz = z - cylinders[c].p0[2];
+        float vdotv = vx*vx + vy*vy + vz*vz;
+        if (vdotv == 0.0f) continue;
+        float t = (wx*vx + wy*vy + wz*vz) / vdotv;
+        if (t < 0.0f || t > 1.0f) continue;
+        float dx = wx - vx*t;
+        float dy = wy - vy*t;
+        float dz = wz - vz*t;
+        float r = cylinders[c].radius;
+        if (dx*dx + dy*dy + dz*dz < r*r) {
+            density += cylinders[c].rho;
+        }
+    }
+    density *= density_multiplier;
+    if (density > 1.0f) density = 1.0f;
+    if (density < 0.0f) density = 0.0f;
+    out_volume[idx] = density;
+}
+
+int AssembleVoxelGridSpatialCUDA(
+    const CylinderParams* cylinders,
+    int num_cylinders,
+    int res,
+    float density_multiplier,
+    int grid_dim,
+    const int* cell_offsets,
+    const int* cyl_indices,
+    int num_cyl_indices,
+    float* out_volume)
+{
+    if (!cylinders || !out_volume || !cell_offsets || !cyl_indices) return 1;
+    if (num_cylinders <= 0 || res <= 0 || grid_dim <= 0) return 2;
+
+    size_t cyl_bytes     = (size_t)num_cylinders   * sizeof(CylinderParams);
+    size_t vol_bytes     = (size_t)res * res * res  * sizeof(float);
+    size_t off_bytes     = (size_t)(grid_dim * grid_dim * grid_dim + 1) * sizeof(int);
+    size_t idx_bytes     = (size_t)num_cyl_indices  * sizeof(int);
+
+    CylinderParams* d_cyls = nullptr;
+    float*          d_vol  = nullptr;
+    int*            d_off  = nullptr;
+    int*            d_idx  = nullptr;
+    cudaError_t err;
+
+#define CHECKED_ALLOC(ptr, bytes) \
+    err = cudaMalloc(&ptr, bytes); \
+    if (err != cudaSuccess) { cudaFree(d_cyls); cudaFree(d_vol); cudaFree(d_off); cudaFree(d_idx); return 3; }
+
+    CHECKED_ALLOC(d_cyls, cyl_bytes)
+    CHECKED_ALLOC(d_vol,  vol_bytes)
+    CHECKED_ALLOC(d_off,  off_bytes)
+    CHECKED_ALLOC(d_idx,  idx_bytes)
+#undef CHECKED_ALLOC
+
+#define CHECKED_COPY(dst, src, bytes, kind) \
+    err = cudaMemcpy(dst, src, bytes, kind); \
+    if (err != cudaSuccess) { cudaFree(d_cyls); cudaFree(d_vol); cudaFree(d_off); cudaFree(d_idx); return 4; }
+
+    CHECKED_COPY(d_cyls, cylinders,    cyl_bytes, cudaMemcpyHostToDevice)
+    CHECKED_COPY(d_off,  cell_offsets, off_bytes, cudaMemcpyHostToDevice)
+    CHECKED_COPY(d_idx,  cyl_indices,  idx_bytes, cudaMemcpyHostToDevice)
+#undef CHECKED_COPY
+
+    int total = res * res * res;
+    int block  = 256;
+    int grid   = (total + block - 1) / block;
+
+    voxelize_spatial_kernel<<<grid, block>>>(
+        d_cyls, res, density_multiplier,
+        grid_dim, d_off, d_idx, d_vol);
+
+    err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) { cudaFree(d_cyls); cudaFree(d_vol); cudaFree(d_off); cudaFree(d_idx); return 5; }
+
+    err = cudaMemcpy(out_volume, d_vol, vol_bytes, cudaMemcpyDeviceToHost);
+    cudaFree(d_cyls); cudaFree(d_vol); cudaFree(d_off); cudaFree(d_idx);
+    return (err != cudaSuccess) ? 6 : 0;
+}
+

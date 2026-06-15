@@ -18,6 +18,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -54,7 +55,7 @@ func load_deformation(fn string) error {
 	log.Info().Msgf("Loading deformation from '%s'", fn)
 	data, err := os.ReadFile(fn)
 	if err != nil {
-		log.Fatal().Err(err)
+		log.Fatal().Err(err).Msg("error reading deformation file")
 	}
 	factory := &deformations.DeformationFactory{}
 
@@ -90,7 +91,7 @@ func load_object(fn string) error {
 	log.Info().Msgf("Loading object from '%s'", fn)
 	file_content, err := os.ReadFile(fn)
 	if err != nil {
-		log.Fatal().Err(err)
+		log.Fatal().Err(err).Msg("error reading object file")
 	}
 	data := map[string]interface{}{}
 	switch ext := fn[len(fn)-4:]; ext {
@@ -292,6 +293,7 @@ type OneFrameParams struct {
 
 // Transform parameters for all images.
 type TransformParams struct {
+	// FlatField is stored as transmission exp(-optical_depth), not as optical depth.
 	FlatField   float64          `json:"flat_field"`
 	CameraAngle float64          `json:"camera_angle_x"`
 	FL_X        float64          `json:"fl_x"`
@@ -324,6 +326,7 @@ func render(
 	export_volume bool,
 	polar_angle float64,
 	camera_angles []CameraAngle,
+	use_cuda bool,
 ) {
 	defer timer()()
 	wrt := os.Stdout
@@ -398,7 +401,31 @@ func render(
 	pix_step := res * res / 50
 	t0 := time.Now()
 
+	// CUDA path: batch-render all cameras on GPU and skip CPU loop.
+	skipCPULoop := use_cuda && num_images > 0
+	if skipCPULoop {
+		if err := cudaRenderImages(camera_angles, res, R, fov, ds, transforms_file, output_dir, fname_pattern, &transform_params, time_label, transparency); err != nil {
+			log.Fatal().Err(err).Msg("CUDA rendering failed")
+		}
+		jsonData, err := json.MarshalIndent(transform_params, "", "  ")
+		if err != nil {
+			log.Fatal().Msg("Error marshalling transform params to JSON")
+		}
+		if err := os.WriteFile(transforms_file, jsonData, 0644); err != nil {
+			log.Fatal().Msg("Error writing transforms JSON")
+		}
+		objData, err := json.MarshalIndent(lat[0].ToMap(), "", "  ")
+		if err != nil {
+			log.Fatal().Msg("Error marshalling object to JSON")
+		}
+		cudaObjPath := filepath.Join(filepath.Dir(output_dir), "object.json")
+		if err := os.WriteFile(cudaObjPath, objData, 0644); err != nil {
+			log.Fatal().Msg("Error writing object.json")
+		}
+	}
+
 	// loop over all images using provided camera angles
+	if !skipCPULoop {
 	for i_img, angle := range camera_angles {
 		var s string
 		if text_progress {
@@ -484,7 +511,7 @@ func render(
 		filename := filepath.Join(output_dir, fmt.Sprintf(fname_pattern, i_img))
 		out, err := os.Create(filename)
 		if err != nil {
-			log.Panic().Err(err)
+			log.Panic().Err(err).Msg("error creating output file")
 		}
 		log.Debug().Msgf("Saving image to '%s'", filename)
 		png.Encode(out, myImage)
@@ -508,7 +535,6 @@ func render(
 
 	// write object to JSON or YAML
 	data, err := json.MarshalIndent(lat[0].ToMap(), "", "  ")
-	// data, err := yaml.Marshal(lat[0].ToMap())
 	if err != nil {
 		log.Fatal().Msg("Error marshalling object to YAML")
 	}
@@ -518,55 +544,93 @@ func render(
 	if err != nil {
 		log.Fatal().Msg("Error writing object.json to file")
 	}
+	} // end !skipCPULoop
 
 	if export_volume {
-		wg := sync.WaitGroup{}
 		log.Info().Msg("Assembling volume grid")
-		if text_progress {
-			wrt.Write([]byte("["))
-		} else {
-			bar = progressbar.Default(int64(res * res * res))
-		}
-		pix_step = (res * res * res) / 50
-		// export volume grid to file
-		volume64 := make([]float64, res*res*res)
-		for i := range res {
-			for j := range res {
-				for k := range res {
-					wg.Add(1)
-					go computeVoxel(volume64, i, j, k, res, &wg)
-					idx := k*res*res + i*res + j
-					if text_progress {
-						if (idx)%(pix_step) == 0 {
-							wrt.Write([]byte("-"))
-						}
-					} else {
-						bar.Add(1)
-					}
+		totalVoxels := res * res * res
+		volume_path := filepath.Join(filepath.Dir(output_dir), "volume.raw")
+
+		if use_cuda {
+			// GPU voxel assembly: cylinder SDF evaluated in parallel on GPU.
+			vol_f32, err := cudaAssembleVolume(res)
+			if err != nil {
+				log.Fatal().Err(err).Msg("CUDA voxel assembly failed")
+			}
+			// Find max for uint8 normalization.
+			var maxV float32
+			for _, v := range vol_f32 {
+				if v > maxV {
+					maxV = v
 				}
 			}
-		}
-		wg.Wait()
-
-		if text_progress {
-			wrt.Write([]byte("]\n"))
-		}
-		// normalize volume to [0, 255]
-		max_val = 0.0
-		for i := range volume64 {
-			if volume64[i] > max_val {
-				max_val = volume64[i]
+			if maxV == 0 {
+				maxV = 1
 			}
-		}
-		volume := make([]byte, len(volume64))
-		for i, v := range volume64 {
-			volume[i] = byte(v / max_val * 255)
-		}
-		volume_path := filepath.Join(filepath.Dir(output_dir), "volume.raw")
-		log.Info().Msgf("Writing volume to '%s'", volume_path)
-		err = os.WriteFile(volume_path, volume, 0644)
-		if err != nil {
-			log.Fatal().Msg("Error writing volume.raw to file")
+			volume := make([]byte, totalVoxels)
+			for i, v := range vol_f32 {
+				volume[i] = byte(v / maxV * 255)
+			}
+			log.Info().Msgf("Writing volume to '%s'", volume_path)
+			if err := os.WriteFile(volume_path, volume, 0644); err != nil {
+				log.Fatal().Msg("Error writing volume.raw to file")
+			}
+		} else {
+			// CPU voxel assembly: worker pool, one goroutine per CPU core.
+			if text_progress {
+				wrt.Write([]byte("["))
+			} else {
+				bar = progressbar.Default(int64(totalVoxels))
+			}
+			pix_step = totalVoxels / 50
+			volume64 := make([]float64, totalVoxels)
+			numWorkers := runtime.NumCPU()
+			chunkSize := (totalVoxels + numWorkers - 1) / numWorkers
+			var wg sync.WaitGroup
+			for w := 0; w < numWorkers; w++ {
+				start := w * chunkSize
+				end := start + chunkSize
+				if end > totalVoxels {
+					end = totalVoxels
+				}
+				wg.Add(1)
+				go func(start, end int) {
+					defer wg.Done()
+					for idx := start; idx < end; idx++ {
+						k := idx / (res * res)
+						i := (idx / res) % res
+						j := idx % res
+						x := float64(i)/float64(res)*2.0 - 1.0
+						y := float64(j)/float64(res)*2.0 - 1.0
+						z := float64(k)/float64(res)*2.0 - 1.0
+						volume64[k*res*res+i*res+j] = density(x, y, z)
+						if text_progress && idx%pix_step == 0 {
+							wrt.Write([]byte("-"))
+						} else if !text_progress {
+							bar.Add(1)
+						}
+					}
+				}(start, end)
+			}
+			wg.Wait()
+			if text_progress {
+				wrt.Write([]byte("]\n"))
+			}
+			max_val = 0.0
+			for i := range volume64 {
+				if volume64[i] > max_val {
+					max_val = volume64[i]
+				}
+			}
+			volume := make([]byte, len(volume64))
+			for i, v := range volume64 {
+				volume[i] = byte(v / max_val * 255)
+			}
+			log.Info().Msgf("Writing volume to '%s'", volume_path)
+			err = os.WriteFile(volume_path, volume, 0644)
+			if err != nil {
+				log.Fatal().Msg("Error writing volume.raw to file")
+			}
 		}
 	}
 }
@@ -686,6 +750,10 @@ func main() {
 				Usage: "Export voxel grid of resolution" +
 					" res x res x res from density. Save into file volume.raw. (default: false)",
 			},
+			&cli.BoolFlag{
+				Name:  "use_cuda",
+				Usage: "Use CUDA GPU renderer for projections (requires voxel_grid input; binary must be built with -tags=cuda)",
+			},
 			// verbose flag
 			&cli.BoolFlag{
 				Name:  "v",
@@ -771,12 +839,13 @@ func main() {
 				cCtx.Bool("export_volume"),
 				cCtx.Float64("polar_angle"),
 				camera_angles,
+				cCtx.Bool("use_cuda"),
 			)
 			return nil
 		},
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		log.Fatal().Err(err)
+		log.Fatal().Err(err).Msg("fatal error")
 	}
 }
