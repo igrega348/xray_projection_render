@@ -29,15 +29,15 @@ jobs:
       # Build executables for all platforms
       - name: Build for darwin/arm64
         run: |
-          GOOS=darwin GOARCH=arm64 go build -o build/xray_projection_render_darwin-arm64 main.go api.go
-      
+          GOOS=darwin GOARCH=arm64 go build -o build/xray_projection_render_darwin-arm64 .
+
       - name: Build for windows/amd64
         run: |
-          GOOS=windows GOARCH=amd64 go build -o build/xray_projection_render_windows-amd64.exe main.go api.go
-      
+          GOOS=windows GOARCH=amd64 go build -o build/xray_projection_render_windows-amd64.exe .
+
       - name: Build for linux/amd64
         run: |
-          GOOS=linux GOARCH=amd64 go build -o build/xray_projection_render_linux-amd64 main.go api.go
+          GOOS=linux GOARCH=amd64 go build -o build/xray_projection_render_linux-amd64 .
       
       # Build shared library for native platform (linux/amd64) only
       # Note: Cross-compiling shared libraries with CGO requires cross-compiler toolchains
