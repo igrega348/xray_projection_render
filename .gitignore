@@ -36,6 +36,10 @@ build/
 # PAT
 pat*
 
+# Session / diary files (Claude working files, not for public repo)
+SESSION.md
+diary/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

@@ -128,7 +128,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-release
     container:
-      image: nvidia/cuda:12.2-devel-ubuntu22.04
+      image: nvidia/cuda:12.6.3-devel-ubuntu22.04
     permissions:
       contents: write
     steps:
@@ -162,7 +162,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-release
     container:
-      image: nvidia/cuda:13.0-devel-ubuntu24.04
+      image: nvidia/cuda:13.0.3-devel-ubuntu24.04
     permissions:
       contents: write
     steps:
