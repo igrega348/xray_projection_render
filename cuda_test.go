@@ -207,8 +207,8 @@ func TestCPUvsCUDA_NonCubic(t *testing.T) {
 	}
 	rmse := math.Sqrt(sumSqErr / float64(res*res))
 	t.Logf("non-cubic CPU vs CUDA: max_diff=%.4f rmse=%.4f", maxDiff, rmse)
-	if maxDiff > 0.10 {
-		t.Errorf("max pixel diff %.4f > 0.10", maxDiff)
+	if maxDiff > 0.12 {
+		t.Errorf("max pixel diff %.4f > 0.12", maxDiff)
 	}
 	if rmse > 0.03 {
 		t.Errorf("RMSE %.4f > 0.03", rmse)

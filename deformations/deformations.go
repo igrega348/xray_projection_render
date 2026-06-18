@@ -81,6 +81,9 @@ type AffineDeformation struct {
 	Type   string
 }
 
+// Apply returns M*[x,y,z] — a pure linear coordinate transform, NOT a
+// displacement. Use the identity matrix for no deformation.
+// Contrast with GaussianDeformation, which adds a displacement to the input.
 func (a *AffineDeformation) Apply(x, y, z float64) (float64, float64, float64) {
 	_x := a.Matrix[0][0]*x + a.Matrix[0][1]*y + a.Matrix[0][2]*z
 	_y := a.Matrix[1][0]*x + a.Matrix[1][1]*y + a.Matrix[1][2]*z

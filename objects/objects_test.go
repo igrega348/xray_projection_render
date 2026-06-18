@@ -348,6 +348,85 @@ func TestVoxelGridNonCubic(t *testing.T) {
 	}
 }
 
+// ── TessellatedObjColl seam tests ────────────────────────────────────────────
+
+// TestTessellatedDensityXAxisCylinder checks that a cylinder spanning the full
+// width of a unit cell ([0,1] in x) tiles seamlessly: density on the cylinder
+// axis must be non-zero and equal on both sides of every UC boundary.
+func TestTessellatedDensityXAxisCylinder(t *testing.T) {
+	cyl := &Cylinder{P0: mgl64.Vec3{0, 0.5, 0.5}, P1: mgl64.Vec3{1, 0.5, 0.5}, Radius: 0.1, Rho: 1.0}
+	uc := UnitCell{
+		Objects:                            ObjectCollection{Objects: []Object{cyl}},
+		Xmin: 0, Xmax: 1, Ymin: 0, Ymax: 1, Zmin: 0, Zmax: 1,
+	}
+	lat := &TessellatedObjColl{UC: uc, Xmin: -2, Xmax: 2, Ymin: -2, Ymax: 2, Zmin: -2, Zmax: 2}
+
+	// Sample along the cylinder axis at x = ..., -1, -0.5, 0, 0.5, 1, 1.5, ...
+	// All should return Rho=1 (d=0 from axis, c in [0,1] in the appropriate periodic copy).
+	xs := []float64{-1.9, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 1.9}
+	for _, x := range xs {
+		got := lat.Density(x, 0.5, 0.5)
+		if got == 0 {
+			t.Errorf("x=%.1f: density=0 (seam on cylinder axis)", x)
+		}
+	}
+
+	// Verify continuity across x=1.0 (a UC boundary): just inside vs just outside.
+	eps := 1e-9
+	dIn := lat.Density(1.0-eps, 0.5, 0.5)
+	dOut := lat.Density(1.0+eps, 0.5, 0.5)
+	if dIn == 0 || dOut == 0 {
+		t.Errorf("seam at x=1: density %.3f (inside) %.3f (outside) should both be non-zero", dIn, dOut)
+	}
+}
+
+// TestTessellatedDensityKelvinZBoundary checks that the Kelvin unit cell tiles
+// correctly across its z faces. Struts (0.5,0,0.75)→(0.5,0.25,1.0) and
+// (0.5,0,0.25)→(0.5,0.25,0.0) meet at the z=0/1 face: density must be
+// non-zero on both sides of z=1 for a point on those struts.
+func TestTessellatedDensityKelvinZBoundary(t *testing.T) {
+	uc := MakeKelvin(0.1, 1.0)
+	lat := &TessellatedObjColl{UC: uc, Xmin: -2, Xmax: 2, Ymin: -2, Ymax: 2, Zmin: -2, Zmax: 2}
+
+	// Point on strut (0.5,0,0.75)→(0.5,0.25,1.0) at parameter c≈0.75:
+	// real-space position (0.5, 0.1875, 0.9375), well inside radius 0.1.
+	// Its periodic image across z=1 is (0.5, 0.1875, 1.0625) which folds to
+	// (0.5, 0.1875, 0.0625) — on the mirror strut (0.5,0,0.25)→(0.5,0.25,0.0).
+	insideZ := lat.Density(0.5, 0.1875, 0.9375)
+	if insideZ == 0 {
+		t.Error("Kelvin z-boundary: density=0 just inside z=1 (on strut axis)")
+	}
+	outsideZ := lat.Density(0.5, 0.1875, 1.0625)
+	if outsideZ == 0 {
+		t.Error("Kelvin z-boundary: density=0 just outside z=1 (should fold to mirror strut)")
+	}
+
+	// Density values should be equal (both points are symmetric with c=0.75 on respective struts).
+	if math.Abs(insideZ-outsideZ) > 1e-9 {
+		t.Errorf("Kelvin z-boundary density mismatch: inside=%.4f outside=%.4f", insideZ, outsideZ)
+	}
+}
+
+// TestTessellatedDensityKelvinYFaceStruts checks struts that lie entirely in a
+// face of the Kelvin unit cell (y=0 and y=1). These struts must contribute
+// density on both sides of the y=0 face.
+func TestTessellatedDensityKelvinYFaceStruts(t *testing.T) {
+	uc := MakeKelvin(0.1, 1.0)
+	lat := &TessellatedObjColl{UC: uc, Xmin: -2, Xmax: 2, Ymin: -2, Ymax: 2, Zmin: -2, Zmax: 2}
+
+	// Strut (0.25,0,0.5)→(0.5,0,0.75) lies on y=0. Midpoint=(0.375, 0, 0.625), d_perp=0.
+	// A point offset by (0, ±eps, 0) from the midpoint must be inside radius 0.1.
+	eps := 0.01
+	dAbove := lat.Density(0.375, eps, 0.625)
+	dBelow := lat.Density(0.375, -eps, 0.625) // folds to y=1-eps, hits y=1 mirror strut
+	if dAbove == 0 {
+		t.Errorf("Kelvin y-face strut: density=0 at y=+%.3f (just above y=0 face)", eps)
+	}
+	if dBelow == 0 {
+		t.Errorf("Kelvin y-face strut: density=0 at y=-%.3f (just below y=0 face, should fold to y=1 mirror)", eps)
+	}
+}
+
 // TestVoxelGridNonCubicAxisSeparation tests with a larger asymmetric non-cubic
 // grid that density placed at an x-offset is not visible at the equivalent y-offset.
 // Uses (N-1) world-coordinate convention to match Density().

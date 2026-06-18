@@ -34,7 +34,27 @@ For Python usage, you'll need the shared library:
 - **Linux users**: Pre-built shared libraries are available in [GitHub releases](https://github.com/igrega348/xray_projection_render/releases)
 - **macOS/Windows users**: You must build the shared library from source (see [Python Usage Guide](PYTHON_USAGE.md))
 
-**Note**: Only Linux shared libraries are included in releases due to CGO cross-compilation limitations. macOS and Windows users need to build natively on their platforms.
+**Note**: Only Linux (amd64) shared libraries are included in releases due to CGO cross-compilation limitations. macOS and Windows users need to build natively on those platforms.
+
+### CUDA (GPU) Acceleration
+
+Each release includes CUDA-accelerated shared libraries for Linux/x86_64:
+- `libcuda_render-cuda12-linux-x86_64.so` — requires CUDA 12.x toolkit (`libcudart.so.12`); targets sm_75–sm_90 (Turing through Hopper)
+- `libcuda_render-cuda13-linux-x86_64.so` — requires CUDA 13.x toolkit (`libcudart.so.13`); targets sm_75–sm_120 (through Blackwell)
+
+To use, rename the appropriate file to `libcuda_render.so`, place it alongside `libxray_projection_render_linux-amd64.so`, and ensure the matching `libcudart.so` is on `LD_LIBRARY_PATH`:
+
+```bash
+export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+```
+
+To build from source (requires `nvcc`):
+```bash
+make libcuda_render.so       # CUDA 12-compatible (sm_75–sm_90)
+make libcuda_render-cuda13.so  # CUDA 13 (sm_75–sm_120)
+# Override CUDA installation path if needed:
+make libcuda_render.so CUDA_HOME=/usr/local/cuda-12.2
+```
 
 ## Quickstart
 
@@ -59,7 +79,7 @@ To see all available options, run:
 
 ### Python Interface
 
-The Python interface requires a shared library. Pre-built Linux shared libraries are available in [GitHub releases](https://github.com/igrega348/xray_projection_render/releases). For other platforms, you'll need to build the shared library from source (see [Python Usage Guide](PYTHON_USAGE.md)).
+The Python interface requires a shared library. Pre-built Linux shared libraries (CPU and CUDA variants) are available in [GitHub releases](https://github.com/igrega348/xray_projection_render/releases). For other platforms, you'll need to build the shared library from source (see [Python Usage Guide](PYTHON_USAGE.md)).
 
 **Note**: Only Linux (amd64) shared libraries are available in releases due to CGO cross-compilation limitations. For macOS and Windows, you'll need to build the shared library natively on those platforms.
 

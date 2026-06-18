@@ -5,7 +5,7 @@ package main
 
 /*
 #cgo CFLAGS: -I.
-#cgo LDFLAGS: -L${SRCDIR} -lcuda_render -L/usr/lib/x86_64-linux-gnu -lcudart -Wl,-rpath,${SRCDIR} -Wl,-rpath,/usr/lib/x86_64-linux-gnu
+#cgo LDFLAGS: -L${SRCDIR} -lcuda_render -lcudart -Wl,-rpath,${SRCDIR}
 
 #include "cuda_backend.h"
 */
