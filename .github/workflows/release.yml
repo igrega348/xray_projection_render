@@ -23,9 +23,12 @@ jobs:
       - name: Get dependencies
         run: go mod download
       
+      - name: Run tests
+        run: CGO_ENABLED=1 go test ./... -count=1
+
       - name: Create build directory
         run: mkdir -p build
-      
+
       # Build executables for all platforms
       - name: Build for darwin/arm64
         run: |
@@ -37,7 +40,9 @@ jobs:
 
       - name: Build for linux/amd64
         run: |
-          GOOS=linux GOARCH=amd64 go build -o build/xray_projection_render_linux-amd64 .
+          # CGO_ENABLED=1 activates the dlopen-based CUDA loader; the binary works without
+          # a GPU but gains --use_cuda support when libcuda_render.so is placed alongside it.
+          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o build/xray_projection_render_linux-amd64 .
       
       # Build shared library for native platform (linux/amd64) only
       # Note: Cross-compiling shared libraries with CGO requires cross-compiler toolchains
@@ -101,20 +106,26 @@ jobs:
             ### Executables
             - `xray_projection_render_darwin-arm64` - macOS (Apple Silicon)
             - `xray_projection_render_windows-amd64.exe` - Windows (x64)
-            - `xray_projection_render_linux-amd64` - Linux (x64)
+            - `xray_projection_render_linux-amd64` - Linux (x64), includes `--use_cuda` support
 
-            ### Shared Libraries (CPU)
+            ### Shared Libraries (CPU / Python API)
             - `libxray_projection_render_linux-amd64.so` + `.h` - Linux (x64)
 
-            ### Shared Libraries (CUDA)
+            ### Shared Libraries (CUDA GPU backend)
             - `libcuda_render-cuda12-linux-x86_64.so` - Linux (x64), CUDA 12, sm_75/80/86/89/90
             - `libcuda_render-cuda13-linux-x86_64.so` - Linux (x64), CUDA 13, sm_75..sm_120
 
-            To use the CUDA renderer, place the appropriate `.so` alongside
-            `libxray_projection_render_linux-amd64.so`, rename it to `libcuda_render.so`, and
-            ensure the matching `libcudart.so` is on `LD_LIBRARY_PATH`.
+            **CLI -- use_cuda:** place the appropriate `.so` alongside the binary, rename it
+            to `libcuda_render.so`, and ensure the matching `libcudart.so` is on `LD_LIBRARY_PATH`:
+            ```
+            cp libcuda_render-cuda13-linux-x86_64.so libcuda_render.so
+            export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+            ./xray_projection_render_linux-amd64 --input voxel_grid.yaml --use_cuda ...
+            ```
+            **Python API:** place `libcuda_render.so` alongside `libxray_projection_render_linux-amd64.so`.
             - CUDA 12 build: requires `libcudart.so.12` (CUDA 12.x toolkit)
             - CUDA 13 build: requires `libcudart.so.13` (CUDA 13.x toolkit)
+            - `XRAY_CUDA_LIB=/path/to/libcuda_render.so` env var overrides the default search path
           files: |
             build/xray_projection_render_darwin-arm64
             build/xray_projection_render_windows-amd64.exe

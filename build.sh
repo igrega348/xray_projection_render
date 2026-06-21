@@ -17,7 +17,16 @@ build_for_platform() {
     local OUTPUT_NAME=$3
     
     echo "Building for $GOOS/$GOARCH..."
-    GOOS=$GOOS GOARCH=$GOARCH go build -o "$BUILD_DIR/$OUTPUT_NAME" main.go api.go
+    # The Linux binary includes dlopen-based CUDA support when built with CGO_ENABLED=1
+    # (the default on the native platform). Cross-compiling for Linux from a non-Linux host
+    # requires CGO_ENABLED=0 (no cross-compiler available), which silently excludes the
+    # CUDA loader and --use_cuda will return an error at runtime on that binary.
+    if [ "$GOOS" = "linux" ] && [ "$(go env GOOS)" != "linux" ]; then
+        echo "WARNING: Cross-compiling for Linux; CGO disabled. --use_cuda will not work in the output binary."
+        CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build -o "$BUILD_DIR/$OUTPUT_NAME" .
+    else
+        GOOS=$GOOS GOARCH=$GOARCH go build -o "$BUILD_DIR/$OUTPUT_NAME" .
+    fi
     echo "Build complete for $GOOS/$GOARCH"
 }
 

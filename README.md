@@ -38,17 +38,26 @@ For Python usage, you'll need the shared library:
 
 ### CUDA (GPU) Acceleration
 
+The Linux binary (`xray_projection_render_linux-amd64`) includes `--use_cuda` support out of the box.
+CUDA is loaded at runtime via `dlopen` — no special build flags required.
+
 Each release includes CUDA-accelerated shared libraries for Linux/x86_64:
 - `libcuda_render-cuda12-linux-x86_64.so` — requires CUDA 12.x toolkit (`libcudart.so.12`); targets sm_75–sm_90 (Turing through Hopper)
 - `libcuda_render-cuda13-linux-x86_64.so` — requires CUDA 13.x toolkit (`libcudart.so.13`); targets sm_75–sm_120 (through Blackwell)
 
-To use, rename the appropriate file to `libcuda_render.so`, place it alongside `libxray_projection_render_linux-amd64.so`, and ensure the matching `libcudart.so` is on `LD_LIBRARY_PATH`:
+To enable GPU rendering:
+1. Download the appropriate `.so` for your CUDA version, rename it to `libcuda_render.so`, and place it in the same directory as the binary.
+2. Ensure the matching `libcudart.so` is on `LD_LIBRARY_PATH`:
 
 ```bash
+cp libcuda_render-cuda13-linux-x86_64.so libcuda_render.so
 export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+./xray_projection_render_linux-amd64 --input voxel_grid.yaml --use_cuda ...
 ```
 
-To build from source (requires `nvcc`):
+You can also set `XRAY_CUDA_LIB=/absolute/path/to/libcuda_render.so` to override the default search path (same directory as the binary → `LD_LIBRARY_PATH`).
+
+To build the CUDA shared library from source (requires `nvcc`):
 ```bash
 make libcuda_render.so       # CUDA 12-compatible (sm_75–sm_90)
 make libcuda_render-cuda13.so  # CUDA 13 (sm_75–sm_120)

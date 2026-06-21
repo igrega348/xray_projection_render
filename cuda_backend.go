@@ -1,19 +1,117 @@
-//go:build cuda
-// +build cuda
+//go:build linux && cgo
 
 package main
 
 /*
 #cgo CFLAGS: -I.
-#cgo LDFLAGS: -L${SRCDIR} -lcuda_render -lcudart -Wl,-rpath,${SRCDIR}
+#cgo LDFLAGS: -ldl
 
+#include <dlfcn.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include "cuda_backend.h"
+
+typedef int (*fn_AssembleVoxelGridCUDA_t)(const CylinderParams*, int, int, float, float*);
+typedef int (*fn_AssembleVoxelGridSpatialCUDA_t)(const CylinderParams*, int, int, float, int, const int*, const int*, int, float*);
+typedef int (*fn_RenderVolumeProjectionsCUDA_t)(const float*, int, int, int, const XRayCameraParams*, int, int, float, float, float*);
+
+static void*                              s_cuda_lib        = NULL;
+static fn_AssembleVoxelGridCUDA_t         s_assemble        = NULL;
+static fn_AssembleVoxelGridSpatialCUDA_t  s_assembleSpatial = NULL;
+static fn_RenderVolumeProjectionsCUDA_t   s_render          = NULL;
+// s_error_buf owns the error string so it is valid across CGO thread boundaries.
+// dlerror() returns a pointer into thread-local storage that is only valid until
+// the next dlerror()/dl*() call on the same OS thread; strdup() into a stable buffer.
+static char s_error_buf[512] = "library not loaded";
+
+static int cuda_dl_load(const char* path) {
+    const char* e;
+    dlerror();
+    s_cuda_lib = dlopen(path, RTLD_LAZY | RTLD_LOCAL);
+    if (!s_cuda_lib) {
+        e = dlerror(); if (e) snprintf(s_error_buf, sizeof(s_error_buf), "%s", e);
+        return -1;
+    }
+    s_assemble = (fn_AssembleVoxelGridCUDA_t)dlsym(s_cuda_lib, "AssembleVoxelGridCUDA");
+    if (!s_assemble) { e = dlerror(); if (e) snprintf(s_error_buf, sizeof(s_error_buf), "%s", e); return -2; }
+    s_assembleSpatial = (fn_AssembleVoxelGridSpatialCUDA_t)dlsym(s_cuda_lib, "AssembleVoxelGridSpatialCUDA");
+    if (!s_assembleSpatial) { e = dlerror(); if (e) snprintf(s_error_buf, sizeof(s_error_buf), "%s", e); return -2; }
+    s_render = (fn_RenderVolumeProjectionsCUDA_t)dlsym(s_cuda_lib, "RenderVolumeProjectionsCUDA");
+    if (!s_render) { e = dlerror(); if (e) snprintf(s_error_buf, sizeof(s_error_buf), "%s", e); return -2; }
+    s_error_buf[0] = '\0';
+    return 0;
+}
+
+static const char* cuda_dl_last_error(void) {
+    return s_error_buf;
+}
+
+static int cuda_dl_AssembleVoxelGridCUDA(
+        const CylinderParams* cyls, int n, int res, float dm, float* out) {
+    if (!s_assemble) return -99;
+    return s_assemble(cyls, n, res, dm, out);
+}
+
+static int cuda_dl_AssembleVoxelGridSpatialCUDA(
+        const CylinderParams* cyls, int n, int res, float dm,
+        int gdim, const int* offsets, const int* indices, int nidx, float* out) {
+    if (!s_assembleSpatial) return -99;
+    return s_assembleSpatial(cyls, n, res, dm, gdim, offsets, indices, nidx, out);
+}
+
+static int cuda_dl_RenderVolumeProjectionsCUDA(
+        const float* vol, int nx, int ny, int nz,
+        const XRayCameraParams* cams, int ncams,
+        int ires, float ds, float ff, float* out) {
+    if (!s_render) return -99;
+    return s_render(vol, nx, ny, nz, cams, ncams, ires, ds, ff, out);
+}
 */
 import "C"
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+	"unsafe"
 )
+
+var (
+	cudaLoadOnce sync.Once
+	cudaLoadErr  error
+)
+
+// initCUDA lazily loads libcuda_render.so on first call.
+// Subsequent calls return the cached result.
+func initCUDA() error {
+	cudaLoadOnce.Do(func() {
+		lib := findCUDALib()
+		clib := C.CString(lib)
+		defer C.free(unsafe.Pointer(clib))
+		if ret := C.cuda_dl_load(clib); ret != 0 {
+			cudaLoadErr = fmt.Errorf("CUDA library not available (%s): %s", lib, C.GoString(C.cuda_dl_last_error()))
+		}
+	})
+	return cudaLoadErr
+}
+
+// findCUDALib returns the path to try for libcuda_render.so:
+// 1. XRAY_CUDA_LIB env var (explicit override)
+// 2. Same directory as the running executable
+// 3. Bare name (resolved via LD_LIBRARY_PATH / ldconfig)
+func findCUDALib() string {
+	if p := os.Getenv("XRAY_CUDA_LIB"); p != "" {
+		return p
+	}
+	if exe, err := os.Executable(); err == nil {
+		p := filepath.Join(filepath.Dir(exe), "libcuda_render.so")
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return "libcuda_render.so"
+}
 
 // xrayCameraParams mirrors the C struct XRayCameraParams for Go.
 type xrayCameraParams struct {
@@ -23,8 +121,6 @@ type xrayCameraParams struct {
 	R    float32
 }
 
-// toC converts the Go-side camera representation into the C struct expected
-// by the CUDA backend.
 func (p *xrayCameraParams) toC() C.XRayCameraParams {
 	var cCam C.XRayCameraParams
 	for i := 0; i < 3; i++ {
@@ -56,9 +152,10 @@ func (p *cylinderParams) toC() C.CylinderParams {
 	return c
 }
 
-// assembleVoxelGridCUDA voxelizes a cylinder scene on the GPU.
-// Returns a float32 volume of length res³ with layout [k*res*res + i*res + j].
 func assembleVoxelGridCUDA(cylinders []cylinderParams, res int, densityMultiplier float64) ([]float32, error) {
+	if err := initCUDA(); err != nil {
+		return nil, err
+	}
 	if len(cylinders) == 0 {
 		return nil, fmt.Errorf("assembleVoxelGridCUDA: no cylinders provided")
 	}
@@ -68,7 +165,7 @@ func assembleVoxelGridCUDA(cylinders []cylinderParams, res int, densityMultiplie
 	}
 	total := res * res * res
 	out := make([]float32, total)
-	ret := C.AssembleVoxelGridCUDA(
+	ret := C.cuda_dl_AssembleVoxelGridCUDA(
 		(*C.CylinderParams)(&cCyls[0]),
 		C.int(len(cylinders)),
 		C.int(res),
@@ -82,18 +179,18 @@ func assembleVoxelGridCUDA(cylinders []cylinderParams, res int, densityMultiplie
 }
 
 // assembleVoxelGridSpatialCUDA builds a CSR spatial-hash on CPU, then voxelizes on GPU.
-// gridDim controls the spatial hash resolution (e.g. 16 → 16³ = 4096 cells).
 func assembleVoxelGridSpatialCUDA(cylinders []cylinderParams, res, gridDim int, densityMultiplier float64) ([]float32, error) {
+	if err := initCUDA(); err != nil {
+		return nil, err
+	}
 	if len(cylinders) == 0 {
 		return nil, fmt.Errorf("assembleVoxelGridSpatialCUDA: no cylinders")
 	}
 	numCells := gridDim * gridDim * gridDim
 	cellSize := 2.0 / float64(gridDim)
 
-	// Build cylinder index lists per cell using AABB overlap.
 	cellLists := make([][]int, numCells)
 	for ci, cyl := range cylinders {
-		// AABB for this cylinder.
 		ax, bx := float64(cyl.p0[0]), float64(cyl.p1[0])
 		ay, by := float64(cyl.p0[1]), float64(cyl.p1[1])
 		az, bz := float64(cyl.p0[2]), float64(cyl.p1[2])
@@ -105,7 +202,6 @@ func assembleVoxelGridSpatialCUDA(cylinders []cylinderParams, res, gridDim int, 
 		zmin := min64(az, bz) - r
 		zmax := max64(az, bz) + r
 
-		// Grid cells overlapped by AABB.
 		cxMin := clampGrid(int((xmin+1.0)/cellSize), gridDim)
 		cxMax := clampGrid(int((xmax+1.0)/cellSize), gridDim)
 		cyMin := clampGrid(int((ymin+1.0)/cellSize), gridDim)
@@ -123,7 +219,6 @@ func assembleVoxelGridSpatialCUDA(cylinders []cylinderParams, res, gridDim int, 
 		}
 	}
 
-	// Build CSR: cell_offsets and cyl_indices.
 	cellOffsets := make([]int32, numCells+1)
 	var totalAssign int
 	for c := 0; c < numCells; c++ {
@@ -141,7 +236,6 @@ func assembleVoxelGridSpatialCUDA(cylinders []cylinderParams, res, gridDim int, 
 		}
 	}
 
-	// Prepare C arrays.
 	cCyls := make([]C.CylinderParams, len(cylinders))
 	for i := range cylinders {
 		cCyls[i] = cylinders[i].toC()
@@ -158,7 +252,7 @@ func assembleVoxelGridSpatialCUDA(cylinders []cylinderParams, res, gridDim int, 
 		cIdxPtr = (*C.int)(&cylIndices[0])
 	}
 
-	ret := C.AssembleVoxelGridSpatialCUDA(
+	ret := C.cuda_dl_AssembleVoxelGridSpatialCUDA(
 		(*C.CylinderParams)(&cCyls[0]),
 		C.int(len(cylinders)),
 		C.int(res),
@@ -197,11 +291,6 @@ func clampGrid(v, dim int) int {
 	return v
 }
 
-// renderVolumeCUDA is a thin Go wrapper around the CUDA volume renderer.
-//
-// It is intentionally low-level: callers are expected to provide a
-// precomputed density volume (normalized to [-1,1]^3 in world coordinates),
-// camera parameters, and an output buffer to receive the rendered images.
 func renderVolumeCUDA(
 	volume []float32,
 	nx, ny, nz int,
@@ -211,6 +300,9 @@ func renderVolumeCUDA(
 	flatField float64,
 	outImages []float32,
 ) error {
+	if err := initCUDA(); err != nil {
+		return err
+	}
 	if len(volume) != nx*ny*nz {
 		return fmt.Errorf("renderVolumeCUDA: volume length %d does not match dimensions %d x %d x %d", len(volume), nx, ny, nz)
 	}
@@ -221,14 +313,12 @@ func renderVolumeCUDA(
 		return fmt.Errorf("renderVolumeCUDA: no cameras provided")
 	}
 
-	// Allocate C-side camera array and populate it.
 	cCams := make([]C.XRayCameraParams, len(cameras))
 	for i := range cameras {
 		cCams[i] = cameras[i].toC()
 	}
 
-	// Call the CUDA backend.
-	ret := C.RenderVolumeProjectionsCUDA(
+	ret := C.cuda_dl_RenderVolumeProjectionsCUDA(
 		(*C.float)(&volume[0]),
 		C.int(nx),
 		C.int(ny),
@@ -245,4 +335,3 @@ func renderVolumeCUDA(
 	}
 	return nil
 }
-

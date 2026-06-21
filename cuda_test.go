@@ -1,5 +1,4 @@
-//go:build cuda
-// +build cuda
+//go:build linux && cgo
 
 package main
 
@@ -11,11 +10,12 @@ import (
 	"github.com/igrega348/xray_projection_render/objects"
 )
 
-// probeCUDA returns true if at least one CUDA device is accessible.
-// It does this by trying a minimal renderVolumeCUDA call and checking whether the
-// error is a device-level failure (codes 3–6, which all come from cudaMalloc /
-// cudaMemcpy failures that indicate no device) vs. a usage error.
+// probeCUDA returns true if libcuda_render.so loaded successfully and at least
+// one CUDA device is accessible. A missing library or no GPU both return false.
 func probeCUDA() bool {
+	if initCUDA() != nil {
+		return false
+	}
 	vol := []float32{0.0}
 	cam := xrayCameraParams{
 		eye:  [3]float32{4, 0, 0},
@@ -24,8 +24,7 @@ func probeCUDA() bool {
 		R:    4,
 	}
 	out := make([]float32, 1)
-	err := renderVolumeCUDA(vol, 1, 1, 1, []xrayCameraParams{cam}, 1, 0.1, 0.0, out)
-	return err == nil
+	return renderVolumeCUDA(vol, 1, 1, 1, []xrayCameraParams{cam}, 1, 0.1, 0.0, out) == nil
 }
 
 // TestCPUvsCUDA renders a voxelized sphere with both the CPU (integrate_along_ray)

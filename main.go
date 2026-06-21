@@ -752,7 +752,7 @@ func main() {
 			},
 			&cli.BoolFlag{
 				Name:  "use_cuda",
-				Usage: "Use CUDA GPU renderer for projections (requires voxel_grid input; binary must be built with -tags=cuda)",
+				Usage: "Use CUDA GPU renderer for projections (requires voxel_grid input; libcuda_render.so must be present alongside the binary or on LD_LIBRARY_PATH)",
 			},
 			// verbose flag
 			&cli.BoolFlag{

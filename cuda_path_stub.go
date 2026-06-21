@@ -1,5 +1,4 @@
-//go:build !cuda
-// +build !cuda
+//go:build !linux || !cgo
 
 package main
 
@@ -14,5 +13,5 @@ func cudaRenderImages(
 	time_label float64,
 	transparency bool,
 ) error {
-	return errors.New("not compiled with CUDA support; rebuild with -tags=cuda")
+	return errors.New("--use_cuda is only supported on Linux (amd64) with CGO enabled")
 }

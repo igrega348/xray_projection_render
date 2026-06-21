@@ -33,6 +33,11 @@ go.work
 # Build folder
 build/
 
+# Built Go binaries (produced locally or by CI; not tracked)
+xray_render_cuda
+xray_render_test
+xray_projection_render
+
 # PAT
 pat*
 
